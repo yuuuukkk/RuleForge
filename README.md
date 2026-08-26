@@ -4,17 +4,17 @@ RuleForge is an AI Gameplay UGC / FPS rule sandbox. The project is being built s
 
 ## Current status
 
-- Unity project scaffold created for Unity `6000.3.21f1` (Unity 6.3 LTS).
+- Unity project scaffold created for the locally installed Unity `2022.3.62f3c1` LTS editor.
 - Arena scene scaffold created at `Assets/Scenes/Arena.unity`.
 - RuleForge module directories created under `Assets/RuleForge/`.
 - No FPS runtime, Rule Engine, Creator UI, or AI implementation has been added.
 
 ## Open the project
 
-1. Install Unity Hub and Unity `6000.3.21f1`, or a newer `6000.3` LTS patch.
+1. Install Unity Hub and Unity `2022.3.62f3c1`.
 2. In Unity Hub, choose **Add > Add project from disk** and select this repository root.
 3. Open `Assets/Scenes/Arena.unity`.
-4. If Unity asks to upgrade from `6000.3.21f1` to a newer `6000.3` patch, allow it and commit the resulting project-version changes.
+4. Keep the project on `2022.3.62f3c1` during V0.1 unless an upgrade is explicitly approved.
 
 ## Milestone 0 scene setup checklist
 
