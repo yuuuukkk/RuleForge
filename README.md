@@ -21,7 +21,7 @@ RuleForge is an AI Gameplay UGC / FPS rule sandbox. The project is being built s
 Complete these Editor-only checks before approving Milestone 0:
 
 - [ ] Open `Arena` without Console errors.
-- [ ] Under `Arena/Environment`, create a ground Cube, several wall Cubes, and a few cover Cubes.
+- [ ] Under `Arena/Environment`, verify the ground, four wall, and three cover Cube blockout objects are visible.
 - [ ] Keep the rough blockout near the origin and verify colliders exist on all environment Cubes.
 - [ ] Place `PlayerSpawn` slightly above the ground surface.
 - [ ] Place 6-10 children named `Spawn_01` through `Spawn_06` (or higher) under `EnemySpawnPoints` around the arena.
