@@ -1,0 +1,38 @@
+{
+  "id": "blood_pact",
+  "displayName": "Blood Pact",
+  "goal": "KillCount",
+  "goalTarget": 10,
+  "weapon": "Assault Rifle",
+  "rules": [
+    {
+      "id": "blood_pact_on_enemy_killed",
+      "trigger": {
+        "type": "EnemyKilled"
+      },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "Stack",
+          "maxStacks": 10
+        },
+        {
+          "effectId": "EnemyMoveSpeed",
+          "kind": "StatModifier",
+          "target": "Enemy",
+          "statId": "EnemyMoveSpeed",
+          "operation": "AddPercent",
+          "value": 0.08,
+          "stackMode": "Stack",
+          "maxStacks": 10
+        }
+      ]
+    }
+  ]
+}

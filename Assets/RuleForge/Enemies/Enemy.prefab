@@ -14,6 +14,9 @@ GameObject:
   - component: {fileID: 4687097130250674170}
   - component: {fileID: 1898984876893687062}
   - component: {fileID: 3698565076165369608}
+  - component: {fileID: 2750828286536476845}
+  - component: {fileID: 382635657102276937}
+  - component: {fileID: 4200000000000000000}
   m_Layer: 0
   m_Name: Enemy
   m_TagString: Untagged
@@ -30,7 +33,7 @@ Transform:
   m_GameObject: {fileID: 7417521273352958097}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0.161, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -124,11 +127,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e96f33cc907b46408e00c153fbc21db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  moveSpeed: 3
-  stoppingDistance: 1.5
-  turnSpeed: 10
-  contactDamage: 10
-  attacksPerSecond: 1
 --- !u!114 &3698565076165369608
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -141,4 +139,108 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5ede61a5f511dd44e95fde7363fad387, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxHealth: 50
+--- !u!114 &2750828286536476845
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7417521273352958097}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fbfded09ea51232499cdce734f8130f5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  config: {fileID: 11400000, guid: acfd6d04f8b74914a69012b9b6341814, type: 2}
+  maxHealth:
+    id: 11
+    baseValue: 50
+    enforceMinimum: 1
+    minimumValue: 1
+    finalValue: 50
+    modifiers: []
+  moveSpeed:
+    id: 12
+    baseValue: 3
+    enforceMinimum: 1
+    minimumValue: 0
+    finalValue: 3
+    modifiers: []
+  stoppingDistance:
+    id: 13
+    baseValue: 1.5
+    enforceMinimum: 1
+    minimumValue: 0
+    finalValue: 1.5
+    modifiers: []
+  turnSpeed:
+    id: 14
+    baseValue: 10
+    enforceMinimum: 1
+    minimumValue: 0
+    finalValue: 10
+    modifiers: []
+  contactDamage:
+    id: 15
+    baseValue: 10
+    enforceMinimum: 1
+    minimumValue: 0
+    finalValue: 10
+    modifiers: []
+  attacksPerSecond:
+    id: 16
+    baseValue: 1
+    enforceMinimum: 1
+    minimumValue: 0.01
+    finalValue: 1
+    modifiers: []
+  desiredAliveEnemies:
+    id: 17
+    baseValue: 3
+    enforceMinimum: 1
+    minimumValue: 1
+    finalValue: 3
+    modifiers: []
+  respawnDelay:
+    id: 18
+    baseValue: 2
+    enforceMinimum: 1
+    minimumValue: 0
+    finalValue: 2
+    modifiers: []
+--- !u!114 &382635657102276937
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7417521273352958097}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a83a08d6a8a04f8c9c6f77ce86257703, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enemyType: Grunt
+--- !u!114 &4200000000000000000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7417521273352958097}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0e2915ef82b4ba8b5d38baa2975ffee, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  modelPrefab: {fileID: 919132149155446097, guid: 9c5243b1bb76ad243b3a994da5266976, type: 3}
+  skins:
+  - enemyType: Grunt
+    texture: {fileID: 2800000, guid: fdd93ab077da3524a945251e861f2baa, type: 3}
+  - enemyType: Runner
+    texture: {fileID: 2800000, guid: f6defa1acdf785945a0765b656f609d6, type: 3}
+  - enemyType: Tank
+    texture: {fileID: 2800000, guid: fc0d45a15195b9043b6f0417965319f3, type: 3}
+  modelLocalPosition: {x: 0, y: 0, z: 0}
+  modelLocalEulerAngles: {x: 0, y: 0, z: 0}
+  modelLocalScale: {x: 0.5, y: 0.5, z: 0.5}

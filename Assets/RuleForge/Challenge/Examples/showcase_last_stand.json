@@ -1,0 +1,58 @@
+{
+  "id": "showcase_last_stand",
+  "displayName": "Showcase 02 - Last Stand",
+  "goal": "Survive",
+  "goalTarget": 30,
+  "weapon": "Assault Rifle",
+  "rules": [
+    {
+      "id": "last_stand_missing_health_tradeoff",
+      "trigger": {
+        "type": "PlayerHPChanged"
+      },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamageFromMissingHealth",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.0,
+          "stringValue": "",
+          "stackMode": "None",
+          "maxStacks": 1,
+          "duration": 0.0,
+          "scaling": {
+            "source": "PlayerMissingHPPercent",
+            "mode": "Linear",
+            "sourceMin": 0.0,
+            "sourceMax": 1.0,
+            "effectMin": 0.0,
+            "effectMax": 1.0
+          }
+        },
+        {
+          "effectId": "PlayerMoveSpeedFromMissingHealth",
+          "kind": "StatModifier",
+          "target": "Player",
+          "statId": "PlayerMoveSpeed",
+          "operation": "AddPercent",
+          "value": 0.0,
+          "stringValue": "",
+          "stackMode": "None",
+          "maxStacks": 1,
+          "duration": 0.0,
+          "scaling": {
+            "source": "PlayerMissingHPPercent",
+            "mode": "Linear",
+            "sourceMin": 0.0,
+            "sourceMax": 1.0,
+            "effectMin": 0.0,
+            "effectMax": -0.5
+          }
+        }
+      ]
+    }
+  ]
+}

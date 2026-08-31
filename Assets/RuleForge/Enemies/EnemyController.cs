@@ -5,18 +5,11 @@ using UnityEngine;
 namespace RuleForge.Enemies
 {
     [RequireComponent(typeof(CharacterController))]
+    [RequireComponent(typeof(EnemyRuntimeStats))]
     public sealed class EnemyController : MonoBehaviour
     {
-        [Header("Movement")]
-        [SerializeField, Min(0f)] private float moveSpeed = 3f;
-        [SerializeField, Min(0f)] private float stoppingDistance = 1.5f;
-        [SerializeField, Min(0f)] private float turnSpeed = 10f;
-
-        [Header("Attack")]
-        [SerializeField, Min(0f)] private float contactDamage = 10f;
-        [SerializeField, Min(0f)] private float attacksPerSecond = 1f;
-
         private CharacterController characterController;
+        private EnemyRuntimeStats runtimeStats;
         private Transform target;
         private PlayerHealth targetHealth;
         private float nextAttackTime;
@@ -24,6 +17,7 @@ namespace RuleForge.Enemies
         private void Awake()
         {
             characterController = GetComponent<CharacterController>();
+            runtimeStats = GetComponent<EnemyRuntimeStats>();
         }
 
         private void Update()
@@ -42,15 +36,17 @@ namespace RuleForge.Enemies
             if (direction.sqrMagnitude > 0f)
             {
                 Quaternion desiredRotation = Quaternion.LookRotation(direction, Vector3.up);
+                float turnSpeed = runtimeStats.TurnSpeedStat.FinalValue;
                 transform.rotation = Quaternion.Slerp(
                     transform.rotation,
                     desiredRotation,
                     turnSpeed * Time.deltaTime);
             }
 
-            if (distance > stoppingDistance)
+            if (distance > runtimeStats.StoppingDistanceStat.FinalValue)
             {
-                characterController.SimpleMove(direction * moveSpeed);
+                characterController.SimpleMove(
+                    direction * runtimeStats.MoveSpeedStat.FinalValue);
                 return;
             }
 
@@ -66,6 +62,11 @@ namespace RuleForge.Enemies
 
         private bool TryAcquireTarget()
         {
+            if (runtimeStats == null || !runtimeStats.IsConfigured)
+            {
+                return false;
+            }
+
             if (targetHealth != null && targetHealth.IsAlive)
             {
                 return true;
@@ -85,6 +86,8 @@ namespace RuleForge.Enemies
 
         private void TryAttack(Vector3 direction)
         {
+            float contactDamage = runtimeStats.ContactDamageStat.FinalValue;
+            float attacksPerSecond = runtimeStats.AttacksPerSecondStat.FinalValue;
             if (targetHealth == null ||
                 !targetHealth.IsAlive ||
                 contactDamage <= 0f ||

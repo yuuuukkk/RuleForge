@@ -1,0 +1,349 @@
+{
+  "id": "invalid_twenty_rules",
+  "displayName": "Invalid Twenty Rules",
+  "goal": "KillCount",
+  "goalTarget": 10,
+  "weapon": "Assault Rifle",
+  "rules": [
+    {
+      "id": "complexity_rule_01",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_02",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_03",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_04",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_05",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_06",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_07",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_08",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_09",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_10",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_11",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_12",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_13",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_14",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_15",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_16",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_17",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_18",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_19",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "complexity_rule_20",
+      "trigger": { "type": "GameStarted" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    }
+  ]
+}

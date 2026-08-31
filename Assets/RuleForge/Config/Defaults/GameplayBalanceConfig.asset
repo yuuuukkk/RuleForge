@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 81f745eb280556646b2f83229eba95e6, type: 3}
+  m_Name: GameplayBalanceConfig
+  m_EditorClassIdentifier: 
+  maxRules: 6
+  maxEffectsPerRule: 4
+  maxConditionsPerRule: 3
+  rewardMultiplier: 1
+  penaltyMultiplier: 1
+  minimumStrengthMultiplier: 0
+  maximumStrengthMultiplier: 2
+  maxStacks: 20
+  minimumDuration: 0
+  maximumDuration: 300
+  minimumProbability: 0
+  maximumProbability: 1
+  effectValueLimits:
+  - effectId: PlayerDamage
+    minimumValue: 0
+    maximumValue: 1.5
+  - effectId: EnemyMoveSpeed
+    minimumValue: 0.05
+    maximumValue: 1.5
+  - effectId: PlayerDamageFromMissingHealth
+    minimumValue: 0
+    maximumValue: 1.5
+  - effectId: SpawnRunner
+    minimumValue: 0
+    maximumValue: 0
+  - effectId: GiveAmmo
+    minimumValue: 1
+    maximumValue: 100
+  - effectId: SpawnGrunt
+    minimumValue: 0
+    maximumValue: 0
+  - effectId: SpawnTank
+    minimumValue: 0
+    maximumValue: 0
+  - effectId: PlayerMoveSpeedFromMissingHealth
+    minimumValue: -0.75
+    maximumValue: 0
+  balancedRatioMinimum: 0.75
+  balancedRatioMaximum: 1.25

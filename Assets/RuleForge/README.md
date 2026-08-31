@@ -1,19 +1,18 @@
 # RuleForge source layout
 
-These folders reserve the architecture described by the product specification. They intentionally contain no runtime implementation during Milestone 0.
-
-| Folder | Intended responsibility |
+| Folder | Responsibility |
 | --- | --- |
-| `AI` | Provider abstraction and structured-output adapters |
-| `Config` | Designer-owned ScriptableObject configuration |
-| `DSL` | Serializable challenge and rule schema |
-| `Challenge` | Challenge loading, compilation, and patching |
-| `Rules` | Generic rule evaluation and execution |
-| `Runtime` | Runtime stats, modifiers, and services |
-| `Validation` | Schema, semantic, range, complexity, and balance checks |
-| `Player`, `Weapons`, `Enemies` | FPS sandbox components |
-| `UI` | Creator and runtime UI |
-| `Analytics` | Generation and playtest metrics |
-| `Debug` | Tuning panel and stat breakdown |
-| `Tests` | EditMode and PlayMode tests |
-| `Scenes` | RuleForge-owned scene assets beyond the top-level Arena scene |
+| `AI` | Provider abstraction, strict structured output, and minimal ChallengePatch application |
+| `Analytics` | Append-only AI/gameplay evidence and truthful summary calculation |
+| `Challenge` | JSON challenge and patch examples |
+| `Config` | Designer-owned ScriptableObject bases, trusted effect identity, and limits |
+| `DSL` | Serializable ChallengeSpec, rules, conditions, effects, scaling, duration, and goals |
+| `Rules` | Event bus, generic RuleEngine, conditions, effects, stacking, scaling, and timed modifiers |
+| `Runtime` | Runtime stats, modifiers, services, and goal execution |
+| `Validation` | Schema, semantic, range, complexity, and Risk / Reward evaluation |
+| `Player`, `Weapons`, `Enemies` | FPS sandbox runtime and data-driven profiles |
+| `UI` | Creator, gameplay HUD, analytics dashboard, and shared input gating |
+| `Debug` | Runtime tuning and stat breakdown tools |
+| `Tests` | Minimal EditMode and legacy PlayMode coverage |
+
+Runtime gameplay values flow from Config assets into mutable RuntimeStats. Rule effects modify only RuntimeStats/services; they do not mutate ScriptableObject assets. Concrete showcase behavior is expressed in JSON, not case-specific gameplay scripts.

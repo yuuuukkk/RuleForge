@@ -1,12 +1,14 @@
 using System;
 using RuleForge.Runtime;
+using RuleForge.Rules;
 using UnityEngine;
 
 namespace RuleForge.Enemies
 {
+    [RequireComponent(typeof(EnemyRuntimeStats))]
     public sealed class EnemyHealth : MonoBehaviour, IDamageable
     {
-        [SerializeField, Min(1f)] private float maxHealth = 50f;
+        private EnemyRuntimeStats runtimeStats;
 
         public event Action<EnemyHealth> Died;
 
@@ -14,13 +16,25 @@ namespace RuleForge.Enemies
 
         public float CurrentHealth { get; private set; }
 
-        public float MaxHealth => maxHealth;
+        public float MaxHealth => RuntimeStats != null
+            ? RuntimeStats.MaxHealthStat.FinalValue
+            : 0f;
 
         public bool IsAlive => CurrentHealth > 0f;
 
         private void OnEnable()
         {
+            runtimeStats = GetComponent<EnemyRuntimeStats>();
+            runtimeStats.MaxHealthStat.ValueChanged += HandleMaxHealthChanged;
             ResetHealth();
+        }
+
+        private void OnDisable()
+        {
+            if (runtimeStats != null)
+            {
+                runtimeStats.MaxHealthStat.ValueChanged -= HandleMaxHealthChanged;
+            }
         }
 
         public void TakeDamage(DamageInfo damageInfo)
@@ -31,13 +45,19 @@ namespace RuleForge.Enemies
             }
 
             CurrentHealth = Mathf.Max(0f, CurrentHealth - damageInfo.Amount);
-            HealthChanged?.Invoke(CurrentHealth, maxHealth);
+            HealthChanged?.Invoke(CurrentHealth, MaxHealth);
 
             if (IsAlive)
             {
                 return;
             }
 
+            EnemyRuntimeIdentity identity = GetComponent<EnemyRuntimeIdentity>();
+            GameplayEventBus.Publish(new GameplayEvent(
+                GameplayEventType.EnemyKilled,
+                gameObject,
+                damageInfo.Source,
+                identity != null ? identity.EnemyType : "Grunt"));
             Died?.Invoke(this);
             if (Application.isPlaying)
             {
@@ -47,8 +67,27 @@ namespace RuleForge.Enemies
 
         public void ResetHealth()
         {
-            CurrentHealth = maxHealth;
-            HealthChanged?.Invoke(CurrentHealth, maxHealth);
+            CurrentHealth = MaxHealth;
+            HealthChanged?.Invoke(CurrentHealth, MaxHealth);
+        }
+
+        private void HandleMaxHealthChanged(float previousMaximum, float newMaximum)
+        {
+            CurrentHealth = Mathf.Min(CurrentHealth, newMaximum);
+            HealthChanged?.Invoke(CurrentHealth, newMaximum);
+        }
+
+        private EnemyRuntimeStats RuntimeStats
+        {
+            get
+            {
+                if (runtimeStats == null)
+                {
+                    runtimeStats = GetComponent<EnemyRuntimeStats>();
+                }
+
+                return runtimeStats;
+            }
         }
     }
 }

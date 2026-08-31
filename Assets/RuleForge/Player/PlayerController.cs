@@ -1,28 +1,28 @@
+using RuleForge.Enemies;
+using RuleForge.UI;
 using UnityEngine;
 
 namespace RuleForge.Player
 {
     [RequireComponent(typeof(CharacterController))]
+    [RequireComponent(typeof(PlayerRuntimeStats))]
     public sealed class PlayerController : MonoBehaviour
     {
-        [Header("Movement")]
-        [SerializeField, Min(0f)] private float moveSpeed = 6f;
-        [SerializeField, Min(0f)] private float jumpHeight = 1.2f;
-        [SerializeField] private float gravity = -24f;
-        [SerializeField] private float groundedVerticalVelocity = -2f;
-
-        [Header("Look")]
+        [Header("References")]
         [SerializeField] private Transform viewTransform;
-        [SerializeField, Min(0f)] private float lookSensitivity = 2f;
-        [SerializeField, Range(1f, 89f)] private float maximumLookAngle = 85f;
 
         private CharacterController characterController;
+        private PlayerRuntimeStats runtimeStats;
+        private PlayerHealth playerHealth;
         private float verticalVelocity;
         private float pitch;
+        private Vector3 pendingCollisionSlide;
 
         private void Awake()
         {
             characterController = GetComponent<CharacterController>();
+            runtimeStats = GetComponent<PlayerRuntimeStats>();
+            playerHealth = GetComponent<PlayerHealth>();
         }
 
         private void OnEnable()
@@ -37,6 +37,19 @@ namespace RuleForge.Player
 
         private void Update()
         {
+            if (playerHealth != null && !playerHealth.IsAlive)
+            {
+                pendingCollisionSlide = Vector3.zero;
+                SetCursorLocked(false);
+                return;
+            }
+
+            if (RuntimeInputGate.IsBlocked)
+            {
+                pendingCollisionSlide = Vector3.zero;
+                return;
+            }
+
             UpdateLook();
             UpdateMovement();
 
@@ -55,6 +68,26 @@ namespace RuleForge.Player
             viewTransform = newViewTransform;
         }
 
+        private void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            if (runtimeStats == null ||
+                hit.normal.y < 0.5f ||
+                hit.collider.GetComponentInParent<EnemyController>() == null)
+            {
+                return;
+            }
+
+            Vector3 slideDirection = transform.position - hit.transform.position;
+            slideDirection.y = 0f;
+            if (slideDirection.sqrMagnitude < 0.01f)
+            {
+                slideDirection = -transform.forward;
+            }
+
+            pendingCollisionSlide = slideDirection.normalized *
+                                    runtimeStats.EnemyTopSlideSpeedStat.FinalValue;
+        }
+
         private void UpdateLook()
         {
             if (viewTransform == null || Cursor.lockState != CursorLockMode.Locked)
@@ -62,16 +95,30 @@ namespace RuleForge.Player
                 return;
             }
 
+            if (runtimeStats == null || !runtimeStats.IsConfigured)
+            {
+                return;
+            }
+
+            float lookSensitivity = runtimeStats.LookSensitivityStat.FinalValue;
             float mouseX = Input.GetAxis("Mouse X") * lookSensitivity;
             float mouseY = Input.GetAxis("Mouse Y") * lookSensitivity;
 
             transform.Rotate(Vector3.up * mouseX);
+            float maximumLookAngle = runtimeStats.MaximumLookAngleStat.FinalValue;
             pitch = Mathf.Clamp(pitch - mouseY, -maximumLookAngle, maximumLookAngle);
             viewTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
         }
 
         private void UpdateMovement()
         {
+            if (runtimeStats == null || !runtimeStats.IsConfigured)
+            {
+                return;
+            }
+
+            float groundedVerticalVelocity =
+                runtimeStats.GroundedVerticalVelocityStat.FinalValue;
             if (characterController.isGrounded && verticalVelocity < 0f)
             {
                 verticalVelocity = groundedVerticalVelocity;
@@ -83,14 +130,20 @@ namespace RuleForge.Player
             input = Vector2.ClampMagnitude(input, 1f);
 
             Vector3 planarMovement =
-                (transform.right * input.x + transform.forward * input.y) * moveSpeed;
+                (transform.right * input.x + transform.forward * input.y) *
+                runtimeStats.MoveSpeedStat.FinalValue;
+            planarMovement += pendingCollisionSlide;
+            pendingCollisionSlide = Vector3.zero;
 
             if (Input.GetButtonDown("Jump") && characterController.isGrounded)
             {
+                float jumpHeight = runtimeStats.JumpHeightStat.FinalValue;
+                float gravity = runtimeStats.GravityStat.FinalValue;
                 verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
             }
 
-            verticalVelocity += gravity * Time.deltaTime;
+            float gravityAcceleration = runtimeStats.GravityStat.FinalValue;
+            verticalVelocity += gravityAcceleration * Time.deltaTime;
             Vector3 movement = planarMovement + Vector3.up * verticalVelocity;
             characterController.Move(movement * Time.deltaTime);
         }

@@ -1,0 +1,65 @@
+{
+  "id": "showcase_reload_gamble",
+  "displayName": "Showcase 03 - Reload Gamble",
+  "goal": "KillCount",
+  "goalTarget": 10,
+  "weapon": "Shotgun",
+  "rules": [
+    {
+      "id": "reload_gamble_spawn_runner",
+      "trigger": {
+        "type": "PlayerReload"
+      },
+      "conditions": [
+        {
+          "type": "RandomChance",
+          "comparison": "",
+          "value": 0.3,
+          "stringValue": ""
+        }
+      ],
+      "effects": [
+        {
+          "effectId": "SpawnRunner",
+          "kind": "SpawnEnemy",
+          "target": "Enemy",
+          "statId": "",
+          "operation": "",
+          "value": 0.0,
+          "stringValue": "Runner",
+          "stackMode": "None",
+          "maxStacks": 1,
+          "duration": 0.0
+        }
+      ]
+    },
+    {
+      "id": "reload_gamble_runner_reward",
+      "trigger": {
+        "type": "EnemyKilled"
+      },
+      "conditions": [
+        {
+          "type": "EnemyType",
+          "comparison": "Equals",
+          "value": 0.0,
+          "stringValue": "Runner"
+        }
+      ],
+      "effects": [
+        {
+          "effectId": "GiveAmmo",
+          "kind": "GiveAmmo",
+          "target": "Weapon",
+          "statId": "",
+          "operation": "",
+          "value": 10.0,
+          "stringValue": "",
+          "stackMode": "None",
+          "maxStacks": 1,
+          "duration": 0.0
+        }
+      ]
+    }
+  ]
+}

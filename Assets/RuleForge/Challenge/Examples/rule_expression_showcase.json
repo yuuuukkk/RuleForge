@@ -1,0 +1,119 @@
+{
+  "id": "rule_expression_showcase",
+  "displayName": "Rule Expression Showcase",
+  "goal": "KillCount",
+  "goalTarget": 10,
+  "weapon": "Assault Rifle",
+  "rules": [
+    {
+      "id": "blood_pact_on_enemy_killed",
+      "trigger": {
+        "type": "EnemyKilled"
+      },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.05,
+          "stackMode": "Stack",
+          "maxStacks": 10
+        },
+        {
+          "effectId": "EnemyMoveSpeed",
+          "kind": "StatModifier",
+          "target": "Enemy",
+          "statId": "EnemyMoveSpeed",
+          "operation": "AddPercent",
+          "value": 0.08,
+          "stackMode": "Stack",
+          "maxStacks": 10
+        }
+      ]
+    },
+    {
+      "id": "missing_health_scales_damage",
+      "trigger": {
+        "type": "PlayerHPChanged"
+      },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamageFromMissingHealth",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.0,
+          "stackMode": "None",
+          "maxStacks": 1,
+          "scaling": {
+            "source": "PlayerMissingHPPercent",
+            "mode": "Linear",
+            "sourceMin": 0.0,
+            "sourceMax": 1.0,
+            "effectMin": 0.0,
+            "effectMax": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "reload_may_spawn_runner",
+      "trigger": {
+        "type": "PlayerReload"
+      },
+      "conditions": [
+        {
+          "type": "RandomChance",
+          "comparison": "",
+          "value": 0.3,
+          "stringValue": ""
+        }
+      ],
+      "effects": [
+        {
+          "effectId": "SpawnRunner",
+          "kind": "SpawnEnemy",
+          "target": "Enemy",
+          "statId": "",
+          "operation": "",
+          "value": 0.0,
+          "stringValue": "Runner",
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    },
+    {
+      "id": "runner_kill_gives_ammo",
+      "trigger": {
+        "type": "EnemyKilled"
+      },
+      "conditions": [
+        {
+          "type": "EnemyType",
+          "comparison": "Equals",
+          "value": 0.0,
+          "stringValue": "Runner"
+        }
+      ],
+      "effects": [
+        {
+          "effectId": "GiveAmmo",
+          "kind": "GiveAmmo",
+          "target": "Weapon",
+          "statId": "",
+          "operation": "",
+          "value": 10.0,
+          "stringValue": "",
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using RuleForge.Config;
 using RuleForge.Enemies;
 using RuleForge.Runtime;
 using UnityEngine;
@@ -11,6 +12,9 @@ namespace RuleForge.Tests
         public void EnemyHealth_TakesDamageAndDiesAtZero()
         {
             GameObject enemyObject = new GameObject("Test Enemy");
+            EnemyConfig enemyConfig = ScriptableObject.CreateInstance<EnemyConfig>();
+            EnemyRuntimeStats runtimeStats = enemyObject.AddComponent<EnemyRuntimeStats>();
+            runtimeStats.Configure(enemyConfig);
             EnemyHealth enemyHealth = enemyObject.AddComponent<EnemyHealth>();
             enemyHealth.ResetHealth();
             bool died = false;
@@ -26,6 +30,7 @@ namespace RuleForge.Tests
             Assert.That(died, Is.True);
 
             Object.DestroyImmediate(enemyObject);
+            Object.DestroyImmediate(enemyConfig);
         }
 
         [Test]

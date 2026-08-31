@@ -1,0 +1,17 @@
+{
+  "operations": [
+    {
+      "operation": "ModifyValue",
+      "ruleId": "blood_pact_on_enemy_killed",
+      "effectId": "EnemyMoveSpeed",
+      "conditionIndex": 0,
+      "value": 0.16,
+      "maxStacks": 0,
+      "duration": 0.0,
+      "probability": 0.0,
+      "goal": "",
+      "goalTarget": 0.0,
+      "rule": null
+    }
+  ]
+}

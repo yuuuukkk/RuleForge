@@ -1,0 +1,26 @@
+{
+  "id": "invalid_player_damage_500",
+  "displayName": "Invalid Player Damage 500 Percent",
+  "goal": "KillCount",
+  "goalTarget": 10,
+  "weapon": "Assault Rifle",
+  "rules": [
+    {
+      "id": "invalid_damage_rule",
+      "trigger": { "type": "EnemyKilled" },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 5.0,
+          "stackMode": "None",
+          "maxStacks": 1
+        }
+      ]
+    }
+  ]
+}

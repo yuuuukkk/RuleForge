@@ -1,5 +1,6 @@
 using System.Collections;
 using NUnit.Framework;
+using RuleForge.Config;
 using RuleForge.Enemies;
 using RuleForge.Runtime;
 using RuleForge.Weapons;
@@ -19,12 +20,19 @@ namespace RuleForge.Tests
             cameraObject.transform.position = Vector3.up * 50f;
 
             GameObject weaponObject = new GameObject("Test Weapon");
+            WeaponConfig weaponConfig = ScriptableObject.CreateInstance<WeaponConfig>();
+            WeaponRuntimeStats weaponRuntimeStats =
+                weaponObject.AddComponent<WeaponRuntimeStats>();
+            weaponRuntimeStats.Configure(weaponConfig);
             WeaponController weapon = weaponObject.AddComponent<WeaponController>();
             weapon.SetAimCamera(camera);
 
             GameObject enemyObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             enemyObject.name = "Test Enemy";
             enemyObject.transform.position = Vector3.up * 50f + Vector3.forward * 5f;
+            EnemyConfig enemyConfig = ScriptableObject.CreateInstance<EnemyConfig>();
+            EnemyRuntimeStats enemyRuntimeStats = enemyObject.AddComponent<EnemyRuntimeStats>();
+            enemyRuntimeStats.Configure(enemyConfig);
             EnemyHealth enemyHealth = enemyObject.AddComponent<EnemyHealth>();
             enemyHealth.ResetHealth();
 
@@ -39,6 +47,8 @@ namespace RuleForge.Tests
             Object.Destroy(cameraObject);
             Object.Destroy(weaponObject);
             Object.Destroy(enemyObject);
+            Object.Destroy(weaponConfig);
+            Object.Destroy(enemyConfig);
             yield return null;
         }
 
