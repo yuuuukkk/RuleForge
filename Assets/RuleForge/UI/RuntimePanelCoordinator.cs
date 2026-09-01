@@ -8,6 +8,8 @@ namespace RuleForge.UI
         private static UnityEngine.Object activeOwner;
         private static Action closeActive;
 
+        public static bool HasActivePanel => activeOwner != null;
+
         public static void Open(UnityEngine.Object owner, Action closeAction)
         {
             if (owner == null)

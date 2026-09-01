@@ -1056,6 +1056,41 @@ Final static verification after these fixes:
 - All P2 changes remain uncommitted with the preceding P0/P1/UX/art work. Do not commit or push
   until the user explicitly requests it.
 
+## Windows share build and per-tester API Key entry
+
+- Added the fastest safe-enough small-group testing flow requested by the user: Creator Developer
+  View now contains a masked OpenAI API Key field, optional local remember toggle, Use button,
+  Clear button, and explicit provider/key status. Each tester must enter their own key; no key is
+  present in source, Git, scene data, or the build.
+- `RuntimeOpenAICredentials` keeps a key for the current process and optionally in that tester's
+  local PlayerPrefs. Remember is opt-in and explicitly marked unsuitable for shared PCs. Clearing
+  removes both session and saved values. Saving/clearing immediately asks AIGameplayController to
+  reselect a configured Real provider.
+- OpenAIResponsesGameplayService resolves direct OpenAI credentials in this order: process
+  `OPENAI_API_KEY`, then the runtime local-testing credential store. Requests still use the real
+  Responses API, structured JSON schema, Validator, and BalanceEvaluator chain. UI warns that
+  direct client credentials are for local testing only; public distribution still requires a
+  backend proxy.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies compile after this change. No tests
+  or PlayMode were run.
+- Built Windows x64 successfully with Unity 2022.3.62f3c1 batch mode, Arena as the enabled startup
+  scene, and temporary embedded product name RuleForge. The source ProjectSettings product name
+  was restored after building.
+- User reported the first player build skipped the intended start overlay. Root cause: the HUD set
+  `showStartMenu` in OnEnable, then RuleEngine's initial ChallengeRestarted event immediately
+  cleared it. Initial ChallengeRestarted now resets counters while preserving the blocked main
+  menu; explicit Start or Creator Play still closes the menu and starts/restarts gameplay.
+- Expanded the flow into a complete build-facing menu: Main has Start/Edit/Display Settings/Quit;
+  Escape during gameplay opens Continue/Edit/Display Settings/Return to Main; result screens have
+  Restart/Edit/Return to Main; Creator has a visible Back/Close button. Display Settings enumerates
+  unique system resolutions, supports previous/next selection, fullscreen toggle, Apply, and Back.
+- Rebuilt after this fix. Share ZIP: `D:\codex\Builds\RuleForge_Windows_试玩版.zip`, 27,818,766
+  bytes, SHA-256
+  `56941A805DD9DBD60B9A2BC2508D8ED93E4E9E4BA19DD4B95EE31E4E0988B553`. The ZIP includes
+  `README_CN.txt`; build log records `Build Finished, Result: Success`.
+- Runtime credential source changes and this state update are currently uncommitted/unpushed. The
+  ZIP and Builds directory are ignored by Git.
+
 ## Resume protocol
 
 After any context compression, read this file first, then run:

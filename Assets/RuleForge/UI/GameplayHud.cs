@@ -60,6 +60,14 @@ namespace RuleForge.UI
         private GUIStyle dangerButtonStyle;
         private bool showStartMenu = true;
         private bool showEndMenu;
+        private bool showPauseMenu;
+        private bool showSettingsMenu;
+        private FlowMenuReturn settingsReturn = FlowMenuReturn.Main;
+        private Resolution[] availableResolutions = Array.Empty<Resolution>();
+        private int selectedResolutionIndex;
+        private bool selectedFullscreen;
+        private bool challengeStartRequested;
+        private bool creatorOpenedFromFlowMenu;
         private ChallengeGoalState endState = ChallengeGoalState.Inactive;
         private int ruleTriggerCount;
         private int hitCount;
@@ -103,6 +111,10 @@ namespace RuleForge.UI
             GameplayEventBus.EventPublished += HandleGameplayEvent;
             showStartMenu = true;
             showEndMenu = false;
+            showPauseMenu = false;
+            showSettingsMenu = false;
+            selectedFullscreen = Screen.fullScreen;
+            RefreshResolutionOptions();
             RuntimeInputGate.SetBlocked(this, true);
         }
 
@@ -131,13 +143,42 @@ namespace RuleForge.UI
             }
         }
 
+        private void Update()
+        {
+            if (creatorOpenedFromFlowMenu &&
+                (creatorPanel == null || !creatorPanel.IsOpen))
+            {
+                creatorOpenedFromFlowMenu = false;
+            }
+
+            if (!Input.GetKeyDown(KeyCode.Escape) ||
+                RuntimePanelCoordinator.HasActivePanel)
+            {
+                return;
+            }
+
+            if (showSettingsMenu)
+            {
+                ReturnFromSettings();
+            }
+            else if (showPauseMenu)
+            {
+                ResumeGameplay();
+            }
+            else if (!showStartMenu && !showEndMenu)
+            {
+                OpenPauseMenu();
+            }
+        }
+
         private void OnGUI()
         {
             GUISkin previousSkin = RuleForgeGuiTheme.Begin();
             EnsureStyles();
             bool creatorIsCoveringMenu = creatorPanel != null &&
                                          creatorPanel.IsOpen;
-            if (showStartMenu || showEndMenu)
+            if (showStartMenu || showEndMenu ||
+                showPauseMenu || showSettingsMenu)
             {
                 if (!creatorIsCoveringMenu)
                 {
@@ -211,8 +252,8 @@ namespace RuleForge.UI
                 Texture2D.whiteTexture);
             GUI.color = previousColor;
 
-            float width = Mathf.Min(560f, Screen.width - 48f);
-            float height = showStartMenu ? 390f : 460f;
+            float width = Mathf.Min(600f, Screen.width - 48f);
+            float height = showSettingsMenu ? 500f : 540f;
             Rect panelRect = new Rect(
                 (Screen.width - width) * 0.5f,
                 (Screen.height - height) * 0.5f,
@@ -226,7 +267,11 @@ namespace RuleForge.UI
                 "RULEFORGE",
                 menuTitleStyle);
 
-            if (showStartMenu)
+            if (showSettingsMenu)
+            {
+                DrawSettingsMenu(panelRect);
+            }
+            else if (showStartMenu)
             {
                 GUI.Label(
                     new Rect(panelRect.x + 44f, panelRect.y + 96f,
@@ -235,8 +280,17 @@ namespace RuleForge.UI
                     "你可以先编辑挑战，也可以直接开始当前挑战。",
                     menuBodyStyle);
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 190f,
-                            panelRect.width - 144f, 58f),
+                        new Rect(panelRect.x + 72f, panelRect.y + 185f,
+                            panelRect.width - 144f, 54f),
+                        "开始游戏",
+                        GUI.skin.button))
+                {
+                    StartOrRestartChallenge();
+                }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 251f,
+                            panelRect.width - 144f, 54f),
                         "编辑玩法",
                         GUI.skin.button))
                 {
@@ -244,12 +298,64 @@ namespace RuleForge.UI
                 }
 
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 266f,
-                            panelRect.width - 144f, 58f),
-                        "开始游戏",
+                        new Rect(panelRect.x + 72f, panelRect.y + 317f,
+                            panelRect.width - 144f, 54f),
+                        "显示设置",
                         GUI.skin.button))
                 {
-                    StartOrRestartChallenge();
+                    OpenSettings(FlowMenuReturn.Main);
+                }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 397f,
+                            panelRect.width - 144f, 48f),
+                        "退出游戏",
+                        dangerButtonStyle))
+                {
+                    Application.Quit();
+                }
+            }
+            else if (showPauseMenu)
+            {
+                GUI.Label(
+                    new Rect(panelRect.x + 44f, panelRect.y + 104f,
+                        panelRect.width - 88f, 48f),
+                    "游戏已暂停",
+                    resultStyle);
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 175f,
+                            panelRect.width - 144f, 52f),
+                        "继续游戏",
+                        GUI.skin.button))
+                {
+                    ResumeGameplay();
+                }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 239f,
+                            panelRect.width - 144f, 52f),
+                        "编辑玩法",
+                        GUI.skin.button))
+                {
+                    OpenCreatorFromFlowMenu();
+                }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 303f,
+                            panelRect.width - 144f, 52f),
+                        "显示设置",
+                        GUI.skin.button))
+                {
+                    OpenSettings(FlowMenuReturn.Pause);
+                }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 383f,
+                            panelRect.width - 144f, 48f),
+                        "返回主菜单",
+                        dangerButtonStyle))
+                {
+                    ReturnToMainMenu();
                 }
             }
             else
@@ -271,7 +377,7 @@ namespace RuleForge.UI
                     resultBody,
                     menuBodyStyle);
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 302f,
+                        new Rect(panelRect.x + 72f, panelRect.y + 292f,
                             panelRect.width - 144f, 52f),
                         "重新开始",
                         GUI.skin.button))
@@ -280,13 +386,85 @@ namespace RuleForge.UI
                 }
 
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 370f,
+                        new Rect(panelRect.x + 72f, panelRect.y + 356f,
                             panelRect.width - 144f, 48f),
                         "编辑玩法",
                         dangerButtonStyle))
                 {
                     OpenCreatorFromFlowMenu();
                 }
+
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 416f,
+                            panelRect.width - 144f, 44f),
+                        "返回主菜单",
+                        GUI.skin.button))
+                {
+                    ReturnToMainMenu();
+                }
+            }
+        }
+
+        private void DrawSettingsMenu(Rect panelRect)
+        {
+            GUI.Label(
+                new Rect(panelRect.x + 44f, panelRect.y + 100f,
+                    panelRect.width - 88f, 46f),
+                "显示设置",
+                resultStyle);
+
+            string resolutionLabel = availableResolutions.Length > 0
+                ? availableResolutions[selectedResolutionIndex].width + " × " +
+                  availableResolutions[selectedResolutionIndex].height
+                : Screen.width + " × " + Screen.height;
+            GUI.Label(
+                new Rect(panelRect.x + 80f, panelRect.y + 168f,
+                    panelRect.width - 160f, 30f),
+                "分辨率",
+                menuBodyStyle);
+            if (GUI.Button(
+                    new Rect(panelRect.x + 80f, panelRect.y + 208f, 58f, 46f),
+                    "◀",
+                    GUI.skin.button))
+            {
+                ChangeResolutionSelection(-1);
+            }
+
+            GUI.Label(
+                new Rect(panelRect.x + 150f, panelRect.y + 211f,
+                    panelRect.width - 300f, 40f),
+                resolutionLabel,
+                resultStyle);
+            if (GUI.Button(
+                    new Rect(panelRect.xMax - 138f, panelRect.y + 208f,
+                        58f, 46f),
+                    "▶",
+                    GUI.skin.button))
+            {
+                ChangeResolutionSelection(1);
+            }
+
+            selectedFullscreen = GUI.Toggle(
+                new Rect(panelRect.x + 80f, panelRect.y + 278f,
+                    panelRect.width - 160f, 36f),
+                selectedFullscreen,
+                "全屏模式");
+            if (GUI.Button(
+                    new Rect(panelRect.x + 72f, panelRect.y + 332f,
+                        panelRect.width - 144f, 52f),
+                    "应用设置",
+                    GUI.skin.button))
+            {
+                ApplyDisplaySettings();
+            }
+
+            if (GUI.Button(
+                    new Rect(panelRect.x + 72f, panelRect.y + 402f,
+                        panelRect.width - 144f, 48f),
+                    "返回",
+                    dangerButtonStyle))
+            {
+                ReturnFromSettings();
             }
         }
 
@@ -298,13 +476,17 @@ namespace RuleForge.UI
                 return;
             }
 
+            creatorOpenedFromFlowMenu = true;
             creatorPanel.OpenCreator();
         }
 
         private void StartOrRestartChallenge()
         {
+            challengeStartRequested = true;
             showStartMenu = false;
             showEndMenu = false;
+            showPauseMenu = false;
+            showSettingsMenu = false;
             if (ruleEngine != null)
             {
                 ruleEngine.RestartChallenge();
@@ -326,13 +508,16 @@ namespace RuleForge.UI
             endState = state;
             showStartMenu = false;
             showEndMenu = true;
+            showPauseMenu = false;
+            showSettingsMenu = false;
             RuntimeInputGate.SetBlocked(this, true);
         }
 
         private void HandleChallengeRestarted(RuleForge.DSL.ChallengeSpec challenge)
         {
-            showStartMenu = false;
-            showEndMenu = false;
+            bool keepInitialMenu = showStartMenu &&
+                                   !challengeStartRequested &&
+                                   !creatorOpenedFromFlowMenu;
             endState = ChallengeGoalState.Inactive;
             ruleTriggerCount = 0;
             hitCount = 0;
@@ -340,7 +525,141 @@ namespace RuleForge.UI
             totalDamageDealt = 0f;
             hitFeedbackEntries.Clear();
             hitMarkerExpiresAt = 0f;
+            if (keepInitialMenu)
+            {
+                RuntimeInputGate.SetBlocked(this, true);
+                return;
+            }
+
+            challengeStartRequested = false;
+            creatorOpenedFromFlowMenu = false;
+            showStartMenu = false;
+            showEndMenu = false;
+            showPauseMenu = false;
+            showSettingsMenu = false;
             RuntimeInputGate.SetBlocked(this, false);
+        }
+
+        private void OpenPauseMenu()
+        {
+            showStartMenu = false;
+            showEndMenu = false;
+            showSettingsMenu = false;
+            showPauseMenu = true;
+            RuntimeInputGate.SetBlocked(this, true);
+        }
+
+        private void ResumeGameplay()
+        {
+            showPauseMenu = false;
+            showSettingsMenu = false;
+            RuntimeInputGate.SetBlocked(this, false);
+        }
+
+        private void ReturnToMainMenu()
+        {
+            showStartMenu = true;
+            showEndMenu = false;
+            showPauseMenu = false;
+            showSettingsMenu = false;
+            challengeStartRequested = false;
+            creatorOpenedFromFlowMenu = false;
+            RuntimeInputGate.SetBlocked(this, true);
+        }
+
+        private void OpenSettings(FlowMenuReturn returnTarget)
+        {
+            settingsReturn = returnTarget;
+            showStartMenu = false;
+            showEndMenu = false;
+            showPauseMenu = false;
+            showSettingsMenu = true;
+            RefreshResolutionOptions();
+            RuntimeInputGate.SetBlocked(this, true);
+        }
+
+        private void ReturnFromSettings()
+        {
+            showSettingsMenu = false;
+            showStartMenu = settingsReturn == FlowMenuReturn.Main;
+            showPauseMenu = settingsReturn == FlowMenuReturn.Pause;
+            showEndMenu = settingsReturn == FlowMenuReturn.Result;
+            RuntimeInputGate.SetBlocked(this, true);
+        }
+
+        private void RefreshResolutionOptions()
+        {
+            Resolution[] supported = Screen.resolutions;
+            List<Resolution> unique = new List<Resolution>();
+            for (int index = 0; index < supported.Length; index++)
+            {
+                Resolution candidate = supported[index];
+                bool duplicate = false;
+                for (int existingIndex = 0;
+                     existingIndex < unique.Count;
+                     existingIndex++)
+                {
+                    if (unique[existingIndex].width == candidate.width &&
+                        unique[existingIndex].height == candidate.height)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+
+                if (!duplicate)
+                {
+                    unique.Add(candidate);
+                }
+            }
+
+            availableResolutions = unique.ToArray();
+            selectedResolutionIndex = 0;
+            int closestDistance = int.MaxValue;
+            for (int index = 0; index < availableResolutions.Length; index++)
+            {
+                int distance = Mathf.Abs(
+                                   availableResolutions[index].width -
+                                   Screen.width) +
+                               Mathf.Abs(
+                                   availableResolutions[index].height -
+                                   Screen.height);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    selectedResolutionIndex = index;
+                }
+            }
+
+            selectedFullscreen = Screen.fullScreen;
+        }
+
+        private void ChangeResolutionSelection(int direction)
+        {
+            if (availableResolutions.Length == 0)
+            {
+                return;
+            }
+
+            selectedResolutionIndex =
+                (selectedResolutionIndex + direction +
+                 availableResolutions.Length) % availableResolutions.Length;
+        }
+
+        private void ApplyDisplaySettings()
+        {
+            if (availableResolutions.Length == 0)
+            {
+                Screen.fullScreen = selectedFullscreen;
+                return;
+            }
+
+            Resolution selected =
+                availableResolutions[selectedResolutionIndex];
+            Screen.SetResolution(
+                selected.width,
+                selected.height,
+                selectedFullscreen);
         }
 
         private void DrawArt()
@@ -1083,6 +1402,13 @@ namespace RuleForge.UI
             };
             menuBodyStyle.normal.textColor = Color.white;
             dangerButtonStyle = RuleForgeGuiTheme.CreateDangerButtonStyle();
+        }
+
+        private enum FlowMenuReturn
+        {
+            Main,
+            Pause,
+            Result
         }
 
         private sealed class HitFeedbackEntry

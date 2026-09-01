@@ -53,6 +53,14 @@ namespace RuleForge.AI
             }
         }
 
+        public void RefreshProviderSelection()
+        {
+            if (!isBusy)
+            {
+                SelectPreferredProvider();
+            }
+        }
+
         private void OnEnable()
         {
             SelectPreferredProvider();

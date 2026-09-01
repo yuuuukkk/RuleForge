@@ -217,7 +217,6 @@ namespace RuleForge.AI
                 return true;
             }
 
-#if UNITY_EDITOR
             authorization = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
             if (!string.IsNullOrWhiteSpace(authorization))
             {
@@ -225,16 +224,16 @@ namespace RuleForge.AI
                 return true;
             }
 
+            if (RuntimeOpenAICredentials.TryGet(out authorization))
+            {
+                error = string.Empty;
+                return true;
+            }
+
             error =
-                "OPENAI_API_KEY is unavailable to this Unity Editor process. " +
-                "Set it before launching Unity or use a secure backend endpoint.";
+                "OpenAI API Key 未配置。请在开发者视图中输入自己的 Key，" +
+                "或通过 OPENAI_API_KEY 环境变量配置。";
             return false;
-#else
-            error =
-                "Direct OpenAI API access is disabled in player builds. " +
-                "Configure a backend proxy so no API key ships in the client.";
-            return false;
-#endif
         }
 
         private static AIGameplayResult<T> ParseStructured<T>(

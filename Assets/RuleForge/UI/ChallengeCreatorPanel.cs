@@ -41,6 +41,9 @@ namespace RuleForge.UI
         private string modificationPrompt = string.Empty;
         private string lastGeneratedPrompt = string.Empty;
         private string lastModificationPrompt = string.Empty;
+        private string apiKeyDraft = string.Empty;
+        private bool rememberApiKeyOnThisComputer;
+        private string apiKeyStatus = string.Empty;
         private bool showAdvancedEdit;
         private bool showDeveloperView;
         private ChallengeSpec pendingModification;
@@ -184,6 +187,18 @@ namespace RuleForge.UI
                 GUI.skin.window);
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
             GUILayout.BeginHorizontal();
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "Back / Close",
+                    "返回 / 关闭"), GUILayout.Width(120f)))
+            {
+                SetOpen(false);
+                GUILayout.EndHorizontal();
+                GUILayout.EndScrollView();
+                GUILayout.EndArea();
+                RuleForgeGuiTheme.End(previousSkin);
+                return;
+            }
+
             GUILayout.FlexibleSpace();
             if (GUILayout.Button(RuleForgeLocalization.ToggleLabel,
                     GUILayout.Width(90f)))
@@ -1133,6 +1148,7 @@ namespace RuleForge.UI
             }
 
             GUI.enabled = true;
+            DrawRuntimeApiKeySetup();
             DrawReadOnlyDiagnosticText(
                 RuleForgeLocalization.T(
                     "Original Generate Prompt",
@@ -1159,6 +1175,84 @@ namespace RuleForge.UI
             }
 
             GUILayout.EndVertical();
+        }
+
+        private void DrawRuntimeApiKeySetup()
+        {
+            GUILayout.Space(8f);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "OpenAI API Key — local testing only",
+                "OpenAI API Key — 仅限本地试玩"), GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "Use your own key. Never send it to the game author. Direct keys in client apps are not suitable for public distribution.",
+                "请使用试玩者自己的 Key，不要发给游戏作者。客户端直连方式不适合公开发行。"));
+
+            apiKeyDraft = GUILayout.PasswordField(
+                apiKeyDraft ?? string.Empty,
+                '•',
+                GUILayout.Height(28f));
+            rememberApiKeyOnThisComputer = GUILayout.Toggle(
+                rememberApiKeyOnThisComputer,
+                RuleForgeLocalization.T(
+                    "Remember on this computer (not recommended on shared PCs)",
+                    "记住到这台电脑（共用电脑不推荐）"));
+
+            GUILayout.BeginHorizontal();
+            GUI.enabled = !string.IsNullOrWhiteSpace(apiKeyDraft) &&
+                          (aiController == null || !aiController.IsBusy);
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "Use API Key",
+                    "使用这个 API Key"), GUILayout.Height(30f)))
+            {
+                if (RuntimeOpenAICredentials.TrySet(
+                        apiKeyDraft,
+                        rememberApiKeyOnThisComputer,
+                        out string error))
+                {
+                    apiKeyDraft = string.Empty;
+                    aiController?.RefreshProviderSelection();
+                    apiKeyStatus = RuleForgeLocalization.T(
+                        "API Key is active. Generate will use the real OpenAI provider.",
+                        "API Key 已启用，Generate 将使用真实 OpenAI Provider。" );
+                }
+                else
+                {
+                    apiKeyStatus = error;
+                }
+            }
+
+            GUI.enabled = RuntimeOpenAICredentials.HasSessionKey ||
+                          RuntimeOpenAICredentials.HasSavedKey;
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "Clear Local Key",
+                    "清除本机 Key"), GUILayout.Height(30f)))
+            {
+                RuntimeOpenAICredentials.Clear();
+                apiKeyDraft = string.Empty;
+                aiController?.RefreshProviderSelection();
+                apiKeyStatus = RuleForgeLocalization.T(
+                    "The locally entered API Key was cleared.",
+                    "已清除本机输入的 API Key。" );
+            }
+
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+            GUILayout.Label(
+                RuntimeOpenAICredentials.HasSessionKey
+                    ? RuleForgeLocalization.T(
+                        RuntimeOpenAICredentials.HasSavedKey
+                            ? "Local API Key status: Active and remembered"
+                            : "Local API Key status: Active for this session",
+                        RuntimeOpenAICredentials.HasSavedKey
+                            ? "本机 API Key 状态：已启用并记住"
+                            : "本机 API Key 状态：仅本次运行启用")
+                    : RuleForgeLocalization.T(
+                        "Local API Key status: Not configured",
+                        "本机 API Key 状态：未配置"));
+            if (!string.IsNullOrWhiteSpace(apiKeyStatus))
+            {
+                GUILayout.Label(apiKeyStatus, GUI.skin.box);
+            }
         }
 
         private static void DrawReadOnlyDiagnosticText(
