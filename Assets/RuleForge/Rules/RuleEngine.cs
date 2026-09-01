@@ -63,6 +63,8 @@ namespace RuleForge.Rules
         public EffectCatalog EffectCatalog => effectCatalog;
         public ValidationResult LastValidationResult => lastValidationResult;
         public BalanceEvaluation LastBalanceEvaluation => lastBalanceEvaluation;
+        public IReadOnlyList<RuleExecutionDebugState> ExecutionStates =>
+            executionStates;
 
         public event Action<ChallengeSpec> ChallengeRestarted;
         public event Action<RuleTriggerFeedback> RuleTriggered;
@@ -831,13 +833,18 @@ namespace RuleForge.Rules
     {
         Always,
         RandomChance,
-        EnemyType
+        EnemyType,
+        EventValue
     }
 
     public enum RuleComparison
     {
         Equals,
-        NotEquals
+        NotEquals,
+        LessThan,
+        LessOrEqual,
+        GreaterThan,
+        GreaterOrEqual
     }
 
     public enum RuleScalingMode
@@ -878,6 +885,10 @@ namespace RuleForge.Rules
         }
 
         public string StateKey => stateKey;
+        public string RuleId => ruleId ?? string.Empty;
+        public string EffectId => effectId ?? string.Empty;
+        public int AppliedStacks => appliedStacks;
+        public int MaxStacks => maxStacks;
         public float LastAppliedValue => lastAppliedValue;
 
         public void Update(int stacks, float value)
@@ -943,6 +954,11 @@ namespace RuleForge.Rules
                         gameplayEvent.SubjectType,
                         condition.StringValue,
                         condition.Comparison);
+                case RuleConditionType.EventValue:
+                    return CompareNumber(
+                        gameplayEvent.Value,
+                        condition.Value,
+                        condition.Comparison);
                 default:
                     return false;
             }
@@ -968,6 +984,38 @@ namespace RuleForge.Rules
                 expected ?? string.Empty,
                 StringComparison.OrdinalIgnoreCase);
             return comparison == RuleComparison.Equals ? equals : !equals;
+        }
+
+        private static bool CompareNumber(
+            float actual,
+            float expected,
+            string comparisonText)
+        {
+            if (!Enum.TryParse(
+                    comparisonText,
+                    true,
+                    out RuleComparison comparison))
+            {
+                return false;
+            }
+
+            switch (comparison)
+            {
+                case RuleComparison.Equals:
+                    return Mathf.Approximately(actual, expected);
+                case RuleComparison.NotEquals:
+                    return !Mathf.Approximately(actual, expected);
+                case RuleComparison.LessThan:
+                    return actual < expected;
+                case RuleComparison.LessOrEqual:
+                    return actual <= expected;
+                case RuleComparison.GreaterThan:
+                    return actual > expected;
+                case RuleComparison.GreaterOrEqual:
+                    return actual >= expected;
+                default:
+                    return false;
+            }
         }
     }
 

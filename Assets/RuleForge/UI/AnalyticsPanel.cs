@@ -46,10 +46,12 @@ namespace RuleForge.UI
 
         private void OnGUI()
         {
+            GUISkin previousSkin = RuleForgeGuiTheme.Begin();
             GUI.Label(new Rect(16f, Screen.height - 28f, 220f, 22f),
                 RuleForgeLocalization.T("F3  Analytics", "F3  数据分析"));
             if (!visible)
             {
+                RuleForgeGuiTheme.End(previousSkin);
                 return;
             }
 
@@ -61,6 +63,7 @@ namespace RuleForge.UI
                 RuleForgeLocalization.T(
                     "RuleForge Analytics — REAL DATA ONLY",
                     "RuleForge 数据分析 — 仅真实数据"));
+            RuleForgeGuiTheme.End(previousSkin);
         }
 
         public void Configure(AnalyticsRecorder analyticsRecorder)

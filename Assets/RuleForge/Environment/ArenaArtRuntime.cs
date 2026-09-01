@@ -62,9 +62,9 @@ namespace RuleForge.Presentation
 
         private void BuildFloor()
         {
-            for (int x = -4; x <= 4; x++)
+            for (int x = -7; x <= 7; x++)
             {
-                for (int z = -4; z <= 4; z++)
+                for (int z = -7; z <= 7; z++)
                 {
                     Spawn(
                         floorPrefab,
@@ -78,41 +78,41 @@ namespace RuleForge.Presentation
 
         private void BuildPerimeter()
         {
-            for (int index = -4; index <= 4; index++)
+            for (int index = -7; index <= 7; index++)
             {
                 float offset = index * 2f;
                 Spawn(
                     wallPrefab,
                     "NorthWall_" + index,
-                    new Vector3(offset, 0f, 9.35f),
+                    new Vector3(offset, 0f, 15.35f),
                     Vector3.zero,
                     Vector3.one);
                 Spawn(
                     wallPrefab,
                     "SouthWall_" + index,
-                    new Vector3(-offset, 0f, -9.35f),
+                    new Vector3(-offset, 0f, -15.35f),
                     new Vector3(0f, 180f, 0f),
                     Vector3.one);
                 Spawn(
                     wallPrefab,
                     "EastWall_" + index,
-                    new Vector3(9.35f, 0f, -offset),
+                    new Vector3(15.35f, 0f, -offset),
                     new Vector3(0f, 90f, 0f),
                     Vector3.one);
                 Spawn(
                     wallPrefab,
                     "WestWall_" + index,
-                    new Vector3(-9.35f, 0f, offset),
+                    new Vector3(-15.35f, 0f, offset),
                     new Vector3(0f, -90f, 0f),
                     Vector3.one);
             }
 
             Vector3[] corners =
             {
-                new Vector3(-9.35f, 0f, -9.35f),
-                new Vector3(-9.35f, 0f, 9.35f),
-                new Vector3(9.35f, 0f, -9.35f),
-                new Vector3(9.35f, 0f, 9.35f)
+                new Vector3(-15.35f, 0f, -15.35f),
+                new Vector3(-15.35f, 0f, 15.35f),
+                new Vector3(15.35f, 0f, -15.35f),
+                new Vector3(15.35f, 0f, 15.35f)
             };
             for (int index = 0; index < corners.Length; index++)
             {
@@ -130,41 +130,41 @@ namespace RuleForge.Presentation
             Spawn(
                 containerWidePrefab,
                 "CoverVisual_Left",
-                new Vector3(-4f, 0f, 0f),
+                new Vector3(-6f, 0f, 0f),
                 new Vector3(0f, 90f, 0f),
                 new Vector3(1.4f, 1.35f, 1.2f));
             Spawn(
                 containerTallPrefab,
                 "CoverVisual_Center",
-                new Vector3(0f, 0f, 3f),
+                new Vector3(0f, 0f, 5f),
                 Vector3.zero,
                 new Vector3(1.25f, 1.35f, 1.25f));
             Spawn(
                 containerWidePrefab,
                 "CoverVisual_Right",
-                new Vector3(4f, 0f, 0f),
+                new Vector3(6f, 0f, 0f),
                 new Vector3(0f, 90f, 0f),
                 new Vector3(1.4f, 1.35f, 1.2f));
             Spawn(
                 containerPrefab,
                 "SpawnShield_North",
-                new Vector3(0f, 0f, 6.2f),
+                new Vector3(0f, 0f, 10f),
                 Vector3.zero,
                 new Vector3(1.3f, 1.3f, 1.3f));
             AddGameplayBox(
                 "SpawnShield_North_Collider",
-                new Vector3(0f, 0.75f, 6.2f),
+                new Vector3(0f, 0.75f, 10f),
                 Vector3.zero,
                 new Vector3(1.7f, 1.5f, 1.7f));
             Spawn(
                 containerPrefab,
                 "SpawnShield_East",
-                new Vector3(6.2f, 0f, 0f),
+                new Vector3(10f, 0f, 0f),
                 new Vector3(0f, 90f, 0f),
                 new Vector3(1.3f, 1.3f, 1.3f));
             AddGameplayBox(
                 "SpawnShield_East_Collider",
-                new Vector3(6.2f, 0.75f, 0f),
+                new Vector3(10f, 0.75f, 0f),
                 Vector3.zero,
                 new Vector3(1.7f, 1.5f, 1.7f));
         }
@@ -174,41 +174,41 @@ namespace RuleForge.Presentation
             Spawn(
                 structurePrefab,
                 "RaisedDeckStructure",
-                new Vector3(0f, 0f, -5.5f),
+                new Vector3(0f, 0f, -9f),
                 Vector3.zero,
                 new Vector3(2.2f, 1.2f, 1.5f));
             Spawn(
                 balconyFloorPrefab,
                 "RaisedDeckFloor",
-                new Vector3(0f, 1.2f, -5.5f),
+                new Vector3(0f, 1.2f, -9f),
                 Vector3.zero,
                 new Vector3(2.2f, 1f, 1.5f));
             Spawn(
                 stairsRampPrefab,
                 "RaisedDeckRamp",
-                new Vector3(0f, 0f, -3.35f),
+                new Vector3(0f, 0f, -6.85f),
                 Vector3.zero,
                 new Vector3(1.5f, 1.2f, 1.5f));
             Spawn(
                 railPrefab,
                 "RaisedDeckRail_Left",
-                new Vector3(-2.15f, 1.2f, -5.5f),
+                new Vector3(-2.15f, 1.2f, -9f),
                 new Vector3(0f, 90f, 0f),
                 new Vector3(1.5f, 1f, 1f));
             Spawn(
                 railPrefab,
                 "RaisedDeckRail_Right",
-                new Vector3(2.15f, 1.2f, -5.5f),
+                new Vector3(2.15f, 1.2f, -9f),
                 new Vector3(0f, 90f, 0f),
                 new Vector3(1.5f, 1f, 1f));
             AddGameplayBox(
                 "RaisedDeck_Collider",
-                new Vector3(0f, 0.6f, -5.5f),
+                new Vector3(0f, 0.6f, -9f),
                 Vector3.zero,
                 new Vector3(4.4f, 1.2f, 3f));
             AddGameplayBox(
                 "RaisedDeckRamp_Collider",
-                new Vector3(0f, 0.35f, -3.35f),
+                new Vector3(0f, 0.35f, -6.85f),
                 new Vector3(20f, 0f, 0f),
                 new Vector3(2.5f, 0.25f, 2.5f));
         }
@@ -218,13 +218,13 @@ namespace RuleForge.Presentation
             Spawn(
                 computerPrefab,
                 "ControlStation_West",
-                new Vector3(-8.6f, 0f, 4.5f),
+                new Vector3(-14f, 0f, 7f),
                 new Vector3(0f, 90f, 0f),
                 Vector3.one);
             Spawn(
                 computerPrefab,
                 "ControlStation_East",
-                new Vector3(8.6f, 0f, -4.5f),
+                new Vector3(14f, 0f, -7f),
                 new Vector3(0f, -90f, 0f),
                 Vector3.one);
         }

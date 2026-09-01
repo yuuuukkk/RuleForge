@@ -817,6 +817,245 @@ Final static verification after these fixes:
   enemies retain visible model/skin, collision, movement, damage, and death; confirm F1/F2/F3,
   RuleEngine, goals, and Chinese HUD behave as before.
 
+## Creator natural-language UX pass
+
+- Reorganized F2 Creator around the product promise instead of the DSL. The first viewport now
+  shows a four-step Describe/Generate/Play/Modify guide, a large natural-language creation input,
+  prompt-writing guidance, four clickable example chips, and one primary Generate button.
+- Example chips and modify suggestions only assign natural-language text to their respective input
+  fields. They never load a ChallengeSpec, select a template, mutate a stat, or call RuleEngine.
+- The primary Generate/Modify buttons are enabled only for an active, configured Real provider.
+  Mock remains visible and switchable inside Developer View, but cannot be presented through the
+  primary UX as genuine AI output.
+- A generated/current candidate is presented first as a human-readable summary: challenge name,
+  localized goal, reward effects, penalty effects, maximum stacks, and evaluated risk level.
+  Trigger/Condition/Operation/raw identifiers are not shown in the primary summary.
+- Added a prominent `PLAY THIS CHALLENGE` / `开始这个玩法` action. It is enabled only when the
+  exact current draft signature has a captured passing ValidationResult and no AI change is awaiting
+  confirmation. Play still calls `TryApplyRuntimeChallenge` and `RestartChallenge`.
+- Added a separate natural-language Modify input, six suggestion chips, and one Modify button.
+  Modify still calls `AIGameplayController.ModifyChallenge`, which requests a structured
+  ChallengePatch, applies it to a clone, validates/evaluates the candidate, and only then returns it
+  to the panel.
+- AI modifications no longer replace the Creator draft immediately. The candidate and its original
+  baseline are held separately, a localized before/after Diff is shown, and the player must choose
+  Apply Changes or Cancel. The Diff covers goal, weapon, trigger, probability/conditions, effect
+  value, stack count, duration, target, and added/removed rules/effects. Manual editing is locked
+  while a proposal is pending so the comparison baseline cannot drift.
+- Existing manual editing is retained behind `Advanced Edit`; provider diagnostics, validation
+  errors/balance scores, and read-only raw ChallengeSpec JSON are behind `Developer View`.
+- Captured ValidationResult/BalanceEvaluation are now associated with the exact displayed draft.
+  A Modify preview can no longer make the unchanged base summary accidentally show the proposed
+  candidate's balance result before Apply.
+- Static constraint scan found no prompt keyword gameplay dispatch. Runtime, Editor, EditMode-test,
+  and PlayMode-test assemblies compiled with exit code 0 using existing Unity Bee/Roslyn response
+  files. Unity and PlayMode were not started; tests were not executed.
+- Manual verification required in Unity: press F2 and confirm the natural-language input is first;
+  click every creation/modify chip and confirm it only fills text; confirm Mock disables primary AI
+  buttons; switch to a configured Real provider and Generate; inspect human summary; Modify and
+  verify the current summary does not change before Apply; test Cancel, Apply, Advanced validation,
+  Developer raw JSON, language switching, and the final Play action.
+- This UX pass is currently uncommitted. The previously pushed baseline commit is `bd77229` on
+  `origin/dev`.
+
+## Gameplay flow, pause, and UI theme pass
+
+- Opening F1 Runtime Tuning, F2 Creator, or F3 Analytics now pauses gameplay through the shared
+  `RuntimeInputGate`. The gate remembers and restores the pre-panel `Time.timeScale`, so nested or
+  mutually switched panels cannot resume the game early and non-default runtime time scales are
+  preserved.
+- Play Mode now begins on a centered Chinese choice screen with `编辑玩法` and `开始游戏`.
+  Gameplay remains paused until the player starts/restarts the challenge. Choosing Edit opens the
+  real Creator while retaining the flow-menu pause; closing Creator without playing returns to the
+  choice screen.
+- Victory and defeat now open a paused result screen with `重新开始` and `编辑玩法`. Both paths use
+  the existing `RuleEngine.RestartChallenge`/Creator apply flow; no parallel respawn or gameplay
+  implementation was added.
+- Removed PlayerHealth's direct cursor unlock on death. Cursor visibility/locking is now owned by
+  the shared input gate, preventing restart from restoring an already-unlocked death cursor.
+- Added `RuleForgeGuiTheme` and wired the already imported Kenney UI Sci-Fi panel, blue button,
+  gray hover, red button, and Kenney Future title font into Arena's GameplayHud. Creator, F1, F3,
+  and the start/end menus share the theme. The Kenney font is limited to the ASCII RULEFORGE title;
+  Chinese labels keep Unity's Unicode-capable default font.
+- Updated `Milestone11ArtBootstrap.ConfigureHudArt` so future safe setup also wires these existing
+  UI assets. The setup command was not executed and the user's current weapon/model transforms were
+  not touched.
+- Static verification after the flow/theme changes: Runtime, Editor, EditMode-test, and
+  PlayMode-test assemblies compile with exit code 0 through Unity 2022.3.62f3c1 Roslyn response
+  files. `git diff --check` is clean. No Unity instance, automated test, or PlayMode was started.
+- Manual Unity verification required: on Play confirm the opening choice is visible, cursor is
+  usable, and the world is paused; choose Start and confirm movement/shooting and cursor lock;
+  open/close F1, F2, and F3 while observing that enemies and timers pause/resume; choose Edit from
+  the opening menu, close F2 without playing, and confirm the opening menu returns; die and verify
+  the result menu, Restart, restored health/enemies/input, and Edit-from-death; inspect Chinese text
+  glyphs and Kenney button hover/background visuals at the target Game-view resolution.
+- These flow/theme changes and the preceding Creator UX changes remain uncommitted. Do not commit or
+  push until the user explicitly requests it.
+
+## Arena scale, enemy attack readability, and AI provider follow-up
+
+- Expanded the playable Arena blockout from approximately 20x20 to 30x30 units. Ground and four
+  preserved collision walls now match the larger footprint; the Space Station visual floor and
+  perimeter generate as 15x15 tiles with walls at the new boundary.
+- Moved all eight enemy spawn points from the 7-8 unit ring to the 12-13 unit ring. The existing
+  center covers, formal cover visuals, two spawn shields, raised deck, and set dressing were moved
+  outward to fit the larger combat lanes. Player spawn and gameplay systems remain unchanged.
+- Enemy contact damage now has a 0.45-second interruptible windup. A yellow-to-red ground ring and
+  billboard `!` identify the attacking enemy before damage; stepping outside its stopping distance
+  cancels the pending hit. A short expanding red ring marks the actual strike. Damage amounts,
+  attack-rate runtime stats, enemy configs, and RuleEngine integration remain authoritative.
+- Player damage feedback is now substantially stronger: a 0.55-second red full-screen/edge flash,
+  a 0.85-second directional arrow toward the real damage instigator, localized attacker text, and
+  a short damage-scaled first-person camera shake. `PlayerHealth.Damaged` carries the real
+  `DamageInfo`; the existing `PlayerHit` gameplay event semantics remain unchanged.
+- `AIGameplayController` now automatically selects a configured Real provider on enable and after
+  provider configuration. If no Real provider is configured, it retains/falls back to another
+  configured provider (currently Mock) instead of presenting an unusable Real provider.
+- The real OpenAI component, Responses endpoint, and `gpt-5-mini` scene configuration are present.
+  The Windows process/user/machine environment checks on 2026-09-01 found no `OPENAI_API_KEY`, so
+  code cannot make the real provider active until the user securely stores the key outside the
+  project and fully restarts Unity. No key or secret is stored in project files.
+- Static verification: Runtime, Editor, EditMode-test, and PlayMode-test assemblies compiled with
+  exit code 0 through Unity 2022.3.62f3c1 Roslyn/Bee references. `git diff --check` is clean. Codex
+  did not launch Unity, enter PlayMode, or execute gameplay tests.
+- Manual Unity verification required: restart Play to force the runtime Arena visuals to rebuild;
+  inspect new boundaries and all eight spawn locations; approach each enemy type and confirm the
+  warning ring/`!`, sidestep during windup to cancel one hit, allow hits from front/right/behind and
+  confirm arrow direction/red edge/camera shake; verify damage rate remains reasonable; after
+  securely setting `OPENAI_API_KEY` and fully restarting Unity, open F2 and confirm the Real OpenAI
+  provider is selected automatically and Generate makes a real request.
+- This follow-up remains uncommitted together with the preceding Creator and flow/theme changes.
+
+## P0 optimization: AI quality, Creator truthfulness, and gameplay feedback
+
+- Completed only the requested P0 optimization scope. Balance productization, new LowAmmo grammar,
+  showcase packaging, new audio/assets, and other P1/P2 work were deliberately not started.
+- Real OpenAI Generate now receives generic gameplay-design guidance covering risk/reward intent,
+  conservative versus chaotic play, controlled randomness, finite stack growth, temporary bursts,
+  runtime-state scaling, rule loops, numeric relationships, and final constraint verification. This
+  is model guidance over the real vocabulary; there is no prompt keyword dispatch, fixed prompt
+  template, prompt.Contains, or example-to-Challenge mapping.
+- AIGameplayController retains the immediately previous real generation prompt and structural
+  signature for the current Play session. The next request gives that context to the provider and
+  asks it to choose a materially different structure when gameplay intent differs, instead of only
+  renaming the same rules. No result is fabricated or selected locally.
+- Expanded ChallengePatch with field-level operations for Weapon, Trigger, Condition, Scaling,
+  Add/Remove Condition, and Add/Remove/Replace Effect. Existing Value, MaxStack, Duration,
+  Probability, Goal, and Add/Remove Rule operations remain. The applier clones the current
+  ChallengeSpec and mutates only the explicit operation target; untouched rules and values remain
+  unchanged. The structured-output schema exposes every granular operation, caps a patch at eight
+  operations, and tells the provider to prefer granular changes over rule replacement.
+- Added an edit-mode static test case proving ModifyScaling changes the requested range while
+  preserving weapon, condition probability, and the original ChallengeSpec. Tests were compiled
+  but not executed per the user's Unity-testing policy.
+- Creator's primary human-readable summary now displays real non-Always conditions, probability,
+  per-effect Duration, per-effect MaxStack, and Scaling source with effectMin -> effectMax. Scaling
+  challenges such as Last Stand no longer appear as a misleading +0% effect. The existing AI Diff
+  automatically reflects Scaling changes through the corrected value formatter.
+- GameplayHud now consumes the real EnemyHit and Headshot GameplayEvents. It renders a crosshair hit
+  marker, gold headshot marker, world-position damage numbers, and explicit headshot damage text.
+  Shotgun pellets close in time against the same enemy are combined visually while event-derived
+  hit/damage totals remain real.
+- RuleEngine now exposes a read-only view of its existing executionStates and read-only RuleId,
+  EffectId, AppliedStacks, and MaxStacks fields. HUD uses those real states to show up to four
+  active StatModifier effects, their last applied value, current/max stacks, and the real final
+  weapon damage. No RuleEngine execution architecture was changed.
+- Victory/Defeat flow now includes a real result summary: goal progress, hit count, headshots, total
+  applied enemy damage, and number of rules triggered. Counters reset only through the real
+  ChallengeRestarted flow.
+- Static constraint scan found no prompt.Contains/keyword gameplay implementation. Runtime, Editor,
+  EditMode-test, and PlayMode-test assemblies compile with exit code 0 using Unity 2022.3.62f3c1
+  Roslyn/Bee references; git diff --check is clean. Codex did not launch Unity or execute tests.
+- Manual P0 verification required with a configured Real provider: Generate materially different
+  stack-growth, missing-health scaling, random reload loop, conservative, and short-burst prompts;
+  verify explicit 1.5x ratios; Modify only value, probability, scaling, trigger, weapon, add/remove
+  randomness, and replace an effect; inspect Before/After and confirm unrelated data is unchanged.
+  In Gameplay verify body/head hits, shotgun aggregation, headshot marker, damage numbers, real rule
+  trigger lines, persistent stack/final-damage panel, timed-state removal, and both result summaries.
+- All P0 changes remain uncommitted with the preceding UX/art/flow work. Do not commit or push until
+  the user explicitly requests it.
+
+## P1 optimization: balance productization, generic rule loops, and showcases
+
+- Completed only the requested P1 scope after P0: real-data risk/reward productization, a generic
+  composition primitive for numeric runtime values, and portfolio-ready diagnostics for the three
+  existing showcases. No new map, boss, multiplayer, AI NPC, rendering-pipeline, or unrelated
+  gameplay work was added.
+- `BalanceEvaluation` now carries Estimated Difficulty, Growth Score/Speed, and derived gameplay
+  tags. `BalanceEvaluator` derives these from the real ChallengeSpec, EffectCatalog polarity and
+  weights, probability, stack limits, scaling, duration, goal, and trigger frequency. Supported
+  tags are High Risk / High Reward, Snowball, Glass Cannon, Random, Survival, Scaling, and Burst;
+  none are selected by prompt text or showcase identity.
+- Creator's human-readable result and F1 Runtime Tuning panel display real Reward Strength, Risk
+  Strength, Reward/Risk Ratio, Estimated Difficulty, Growth Speed, and localized tags. The raw
+  ChallengeSpec remains confined to Developer View.
+- Added generic `PlayerAmmoChanged` runtime events. WeaponController publishes the real current
+  magazine percentage after a shot, reload completion, or ammo reset. Added generic EventValue
+  conditions and numeric comparisons; Validator rejects EventValue on triggers without documented
+  numeric context and restricts EnemyType comparisons to Equals/NotEquals. AI vocabulary documents
+  the value semantics and structured schemas continue to derive from the real enums.
+- The existing EventValue scaling source can now express reversible low-ammo behavior without a
+  weapon-specific script. Reload Gamble uses three ordinary rules: PlayerReload + RandomChance ->
+  SpawnRunner, EnemyKilled + EnemyType Runner -> GiveAmmo, and PlayerAmmoChanged -> scaled
+  PlayerDamage. Damage, ammo, events, Validator, BalanceEvaluator, and RuleEngine remain the shared
+  runtime data path.
+- Developer View now shows the real Generate prompt and latest Modify request. The three Showcase
+  loader commands save a diagnostic source prompt alongside their JSON solely for portfolio
+  inspection; it does not generate, select, modify, or execute a challenge. Blood Pact remains the
+  stack-growth example, Last Stand the state-scaling example, and Reload Gamble the probability
+  plus rule-combination example, all executed by the same generic RuleEngine.
+- Added edit-mode source checks for numeric EventValue evaluation and balance-derived Snowball
+  growth metadata. Per user policy they were compiled but not executed.
+- Static verification after P1: Runtime, Editor, EditMode-test, and PlayMode-test assemblies compile
+  with Unity 2022.3.62f3c1 Roslyn/Bee references; JSON parsing and `git diff --check` pass; no
+  prompt.Contains/keyword gameplay mapping was found. Codex did not launch Unity, enter PlayMode,
+  or execute gameplay tests.
+- Manual P1 verification required: Generate/validate one random, one stacked, one scaled, and one
+  timed challenge and inspect productized balance values/tags; use the three RuleForge/Showcases
+  menu items and inspect the prompt/spec/validation/balance/runtime-rule diagnostics; in Reload
+  Gamble verify reload can spawn Runner, Runner kills add reserve ammo, and magazine damage rises
+  smoothly as the magazine empties then resets after reload. Confirm unrelated rules still work.
+- All P1 changes remain uncommitted with preceding work. Do not commit or push until the user
+  explicitly requests it.
+
+## P2 optimization: presentation audio and moment-to-moment visual polish
+
+- Completed the previously deferred P2 presentation pass without adding gameplay systems or
+  downloading assets. The project contained no audio files and no AudioSource/AudioClip playback
+  code, so the pass adds one replaceable feedback layer rather than embedding audio behavior in
+  RuleEngine, weapons, enemies, or ChallengeSpec.
+- Added `GameplayAudioFeedback`, attached automatically beside GameplayHud. It listens to the real
+  GameplayEventBus, RuleEngine RuleTriggered event, and ChallengeGoalController state and provides
+  distinct 2D cues for accepted shots, reload, enemy hit, headshot, enemy kill, player damage, rule
+  trigger, victory, and defeat. Serialized AudioClip slots allow authored assets to replace every
+  cue later without code/UI changes.
+- Because no licensed audio assets currently exist in Assets, empty clip slots use short
+  deterministic procedural sci-fi tones created in Awake. They do not consume Unity's global
+  random state, do not affect gameplay, are marked DontSave, and are destroyed with the component.
+  This fallback is presentation audio, not a claim that final authored SFX were imported.
+- Added a small first-person recoil animation to WeaponVisualController. WeaponFireVisualController
+  triggers it only after an accepted shot; it offsets/rotates the visual root and returns to the
+  exact local position/rotation captured from the user's current setup. Raycast origin/direction,
+  damage, fire rate, camera, weapon configs, and serialized model bindings are unchanged.
+- EnemyKilled now adds a larger pooled world-space kill flash at the real enemy position before the
+  gameplay root is destroyed, plus a separate kill audio cue. The existing pooled visual system is
+  reused and the flash has no collider or damage role.
+- Corrected PlayerHit's documented numeric event context while reviewing feedback: PlayerHit.Value
+  now contains actual applied damage, while PlayerHPChanged remains the current 0-to-1 health
+  percentage. This matches GameplayVocabulary and keeps natural-language numeric rules truthful.
+- Static verification after P2: Runtime (including new source files), Editor, EditMode-test, and
+  PlayMode-test assemblies compile with Unity 2022.3.62f3c1 Roslyn/Bee references and
+  `git diff --check` passes. Codex did not launch Unity, enter PlayMode, or execute tests.
+- Manual P2 verification required: confirm one cue each for shot/reload/body hit/headshot/kill,
+  player hit, rule trigger, victory, and defeat; listen for clipping or excessive volume when a
+  shotgun produces multiple hits; verify weapon recoil returns to each of the three manually tuned
+  model positions without drift; confirm the kill flash appears at the enemy rather than the gun;
+  and confirm gameplay damage/fire rate/rules remain unchanged. Audio volume and authored clips can
+  later be adjusted on the runtime-added GameplayAudioFeedback component or wired persistently if
+  desired.
+- All P2 changes remain uncommitted with the preceding P0/P1/UX/art work. Do not commit or push
+  until the user explicitly requests it.
+
 ## Resume protocol
 
 After any context compression, read this file first, then run:

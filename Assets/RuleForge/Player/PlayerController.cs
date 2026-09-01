@@ -1,4 +1,5 @@
 using RuleForge.Enemies;
+using RuleForge.Runtime;
 using RuleForge.UI;
 using UnityEngine;
 
@@ -17,6 +18,12 @@ namespace RuleForge.Player
         private float verticalVelocity;
         private float pitch;
         private Vector3 pendingCollisionSlide;
+        private float hitShakeRemaining;
+        private float hitShakeMagnitude;
+
+        [Header("Damage Feedback")]
+        [SerializeField, Min(0.05f)] private float hitShakeDuration = 0.2f;
+        [SerializeField, Min(0f)] private float maximumHitShakeAngle = 2.4f;
 
         private void Awake()
         {
@@ -27,11 +34,22 @@ namespace RuleForge.Player
 
         private void OnEnable()
         {
+            if (playerHealth != null)
+            {
+                playerHealth.Damaged -= HandleDamaged;
+                playerHealth.Damaged += HandleDamaged;
+            }
+
             SetCursorLocked(true);
         }
 
         private void OnDisable()
         {
+            if (playerHealth != null)
+            {
+                playerHealth.Damaged -= HandleDamaged;
+            }
+
             SetCursorLocked(false);
         }
 
@@ -40,6 +58,7 @@ namespace RuleForge.Player
             if (playerHealth != null && !playerHealth.IsAlive)
             {
                 pendingCollisionSlide = Vector3.zero;
+                ClearHitShake();
                 SetCursorLocked(false);
                 return;
             }
@@ -47,6 +66,7 @@ namespace RuleForge.Player
             if (RuntimeInputGate.IsBlocked)
             {
                 pendingCollisionSlide = Vector3.zero;
+                ClearHitShake();
                 return;
             }
 
@@ -107,7 +127,7 @@ namespace RuleForge.Player
             transform.Rotate(Vector3.up * mouseX);
             float maximumLookAngle = runtimeStats.MaximumLookAngleStat.FinalValue;
             pitch = Mathf.Clamp(pitch - mouseY, -maximumLookAngle, maximumLookAngle);
-            viewTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            ApplyViewRotation();
         }
 
         private void UpdateMovement()
@@ -152,6 +172,56 @@ namespace RuleForge.Player
         {
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
+        }
+
+        private void HandleDamaged(DamageInfo damageInfo)
+        {
+            float healthRatio = playerHealth != null && playerHealth.MaxHealth > 0f
+                ? damageInfo.Amount / playerHealth.MaxHealth
+                : 0.1f;
+            hitShakeMagnitude = Mathf.Lerp(
+                0.8f,
+                maximumHitShakeAngle,
+                Mathf.Clamp01(healthRatio * 5f));
+            hitShakeRemaining = hitShakeDuration;
+        }
+
+        private void ApplyViewRotation()
+        {
+            if (viewTransform == null)
+            {
+                return;
+            }
+
+            if (hitShakeRemaining <= 0f || hitShakeDuration <= 0f)
+            {
+                viewTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+                return;
+            }
+
+            hitShakeRemaining = Mathf.Max(0f, hitShakeRemaining - Time.deltaTime);
+            float strength = Mathf.Clamp01(hitShakeRemaining / hitShakeDuration) *
+                             hitShakeMagnitude;
+            float sample = Time.unscaledTime * 48f;
+            float shakePitch = (Mathf.PerlinNoise(sample, 0.17f) - 0.5f) *
+                               2f * strength;
+            float shakeYaw = (Mathf.PerlinNoise(0.63f, sample) - 0.5f) *
+                             2f * strength;
+            float shakeRoll = (Mathf.PerlinNoise(sample, sample) - 0.5f) *
+                              strength;
+            viewTransform.localRotation = Quaternion.Euler(
+                pitch + shakePitch,
+                shakeYaw,
+                shakeRoll);
+        }
+
+        private void ClearHitShake()
+        {
+            hitShakeRemaining = 0f;
+            if (viewTransform != null)
+            {
+                viewTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+            }
         }
     }
 }

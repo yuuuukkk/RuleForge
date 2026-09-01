@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using RuleForge.Config;
+using RuleForge.DSL;
 using RuleForge.Rules;
 using RuleForge.Runtime.Stats;
 
@@ -98,6 +99,12 @@ namespace RuleForge.AI
                 "EnemyType uses comparison Equals/NotEquals and stringValue " +
                 "Grunt, Runner, or Tank.");
             builder.AppendLine(
+                "EventValue compares condition.value with the trigger's numeric " +
+                "value using Equals, NotEquals, LessThan, LessOrEqual, " +
+                "GreaterThan, or GreaterOrEqual. PlayerHPChanged and " +
+                "PlayerAmmoChanged values are current 0-to-1 percentages; " +
+                "EnemyHit, Headshot, PlayerHit, and WeaponFired values are damage.");
+            builder.AppendLine(
                 "Percent modifiers are decimal fractions: 0.05 means +5%. " +
                 "Do not invent vocabulary or return natural-language rules.");
             builder.AppendLine(
@@ -105,6 +112,106 @@ namespace RuleForge.AI
                 "persistent modifier; positive seconds make it expire. " +
                 "Scaled modifiers must use StackMode None.");
             return builder.ToString();
+        }
+
+        public static string BuildDesignGuidance()
+        {
+            return
+                "Translate the player's design intent into mechanics, not just a " +
+                "theme or renamed copy of the current challenge. Select triggers, " +
+                "conditions, effects, stacking, probability, duration, and scaling " +
+                "because they express the requested play pattern. High-risk/high-" +
+                "reward should contain both a meaningful reward and a clearly " +
+                "stronger or faster-growing risk. Conservative designs should use " +
+                "lower magnitudes, bounded stacks, or reliable conditions. Crazy " +
+                "or random designs should use controlled probability and visible " +
+                "consequences. Continuous growth should use Stack with a finite " +
+                "maxStacks. Short bursts should use positive Duration instead of " +
+                "permanent stacking. State-dependent designs should use Scaling " +
+                "with the appropriate runtime source and StackMode None. Rule-loop " +
+                "designs may use multiple generic rules whose events and effects " +
+                "feed the player's next decision. Do not default every request to " +
+                "EnemyKilled + PlayerDamage + EnemyMoveSpeed. Prefer the smallest " +
+                "set of rules that makes the requested loop legible. When the user " +
+                "specifies a numeric relationship, calculate final parameter values " +
+                "so the requested ratio is actually represented. Before returning, " +
+                "silently verify all identity mappings, numeric ratios, limits, " +
+                "stack/scaling compatibility, and that the output is materially " +
+                "responsive to this prompt. Never use a fixed prompt template or " +
+                "keyword-to-challenge lookup.";
+        }
+
+        public static string BuildStructureSummary(ChallengeSpec challenge)
+        {
+            if (challenge == null)
+            {
+                return "none";
+            }
+
+            StringBuilder builder = new StringBuilder();
+            GameplayRule[] rules = challenge.Rules;
+            for (int ruleIndex = 0; ruleIndex < rules.Length; ruleIndex++)
+            {
+                GameplayRule rule = rules[ruleIndex];
+                if (rule == null)
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append(" | ");
+                }
+
+                builder.Append(rule.Trigger != null
+                        ? rule.Trigger.Type
+                        : "NoTrigger")
+                    .Append("[");
+                RuleCondition[] conditions = rule.Conditions;
+                for (int conditionIndex = 0;
+                     conditionIndex < conditions.Length;
+                     conditionIndex++)
+                {
+                    if (conditionIndex > 0)
+                    {
+                        builder.Append('+');
+                    }
+
+                    builder.Append(conditions[conditionIndex] != null
+                        ? conditions[conditionIndex].Type
+                        : "null");
+                }
+
+                builder.Append("]=>");
+                RuleEffect[] effects = rule.Effects;
+                for (int effectIndex = 0; effectIndex < effects.Length; effectIndex++)
+                {
+                    if (effectIndex > 0)
+                    {
+                        builder.Append('+');
+                    }
+
+                    RuleEffect effect = effects[effectIndex];
+                    if (effect == null)
+                    {
+                        builder.Append("null");
+                        continue;
+                    }
+
+                    builder.Append(effect.EffectId)
+                        .Append('{')
+                        .Append(effect.StackMode)
+                        .Append(",p=")
+                        .Append(HasRandomChance(conditions) ? "yes" : "no")
+                        .Append(",scale=")
+                        .Append(effect.Scaling != null ? "yes" : "no")
+                        .Append(",duration=")
+                        .Append(effect.Duration > 0f ? "yes" : "no")
+                        .Append('}');
+                }
+            }
+
+            return builder.Length > 0 ? builder.ToString() : "empty";
         }
 
         public static string BuildChallengeSchema(EffectCatalog catalog)
@@ -132,11 +239,19 @@ namespace RuleForge.AI
             string effectIds = BuildEffectIdArray(catalog, true);
             string nullableRule = "{\"anyOf\":[{\"type\":\"null\"}," +
                                   BuildRuleSchema(catalog) + "]}";
+            string nullableCondition = "{\"anyOf\":[{\"type\":\"null\"}," +
+                                       BuildConditionSchema() + "]}";
+            string nullableScaling = "{\"anyOf\":[{\"type\":\"null\"}," +
+                                     BuildScalingSchema() + "]}";
+            string nullableEffect = "{\"anyOf\":[{\"type\":\"null\"}," +
+                                    BuildEffectSchema(catalog) + "]}";
+            string eventNamesWithEmpty = JsonStringArrayWithEmpty(
+                SupportedEventNames);
             return "{" +
                    "\"type\":\"object\"," +
                    "\"additionalProperties\":false," +
                    "\"properties\":{" +
-                   "\"operations\":{\"type\":\"array\",\"minItems\":1,\"items\":{" +
+                   "\"operations\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":8,\"items\":{" +
                    "\"type\":\"object\",\"additionalProperties\":false," +
                    "\"properties\":{" +
                    "\"operation\":{\"type\":\"string\",\"enum\":" + operationEnum + "}," +
@@ -149,9 +264,14 @@ namespace RuleForge.AI
                    "\"probability\":{\"type\":\"number\"}," +
                    "\"goal\":{\"type\":\"string\",\"enum\":[\"\",\"Survive\",\"KillCount\",\"Score\"]}," +
                    "\"goalTarget\":{\"type\":\"number\"}," +
+                   "\"weapon\":{\"type\":\"string\",\"enum\":[\"\",\"Assault Rifle\",\"Shotgun\",\"Sniper\"]}," +
+                   "\"trigger\":{\"type\":\"string\",\"enum\":" + eventNamesWithEmpty + "}," +
+                   "\"condition\":" + nullableCondition + "," +
+                   "\"effect\":" + nullableEffect + "," +
+                   "\"scaling\":" + nullableScaling + "," +
                    "\"rule\":" + nullableRule +
                    "}," +
-                   "\"required\":[\"operation\",\"ruleId\",\"effectId\",\"conditionIndex\",\"value\",\"maxStacks\",\"duration\",\"probability\",\"goal\",\"goalTarget\",\"rule\"]" +
+                   "\"required\":[\"operation\",\"ruleId\",\"effectId\",\"conditionIndex\",\"value\",\"maxStacks\",\"duration\",\"probability\",\"goal\",\"goalTarget\",\"weapon\",\"trigger\",\"condition\",\"effect\",\"scaling\",\"rule\"]" +
                    "}}}," +
                    "\"required\":[\"operations\"]" +
                    "}";
@@ -160,10 +280,22 @@ namespace RuleForge.AI
         private static string BuildRuleSchema(EffectCatalog catalog)
         {
             string eventNames = JsonStringArray(SupportedEventNames);
-            string conditionNames = JsonStringArray(
-                Enum.GetNames(typeof(RuleConditionType)));
-            string comparisons = JsonStringArrayWithEmpty(
-                Enum.GetNames(typeof(RuleComparison)));
+            string conditionSchema = BuildConditionSchema();
+            string effectSchema = BuildEffectSchema(catalog);
+
+            return "{" +
+                "\"type\":\"object\",\"additionalProperties\":false," +
+                "\"properties\":{" +
+                "\"id\":{\"type\":\"string\"}," +
+                "\"trigger\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" +
+                "\"type\":{\"type\":\"string\",\"enum\":" + eventNames + "}},\"required\":[\"type\"]}," +
+                "\"conditions\":{\"type\":\"array\",\"items\":" + conditionSchema + "}," +
+                "\"effects\":{\"type\":\"array\",\"items\":" + effectSchema + "}" +
+                   "},\"required\":[\"id\",\"trigger\",\"conditions\",\"effects\"]}";
+        }
+
+        private static string BuildEffectSchema(EffectCatalog catalog)
+        {
             string effectIds = BuildEffectIdArray(catalog, false);
             string effectKinds = JsonStringArray(
                 Enum.GetNames(typeof(RuleEffectKind)));
@@ -175,56 +307,56 @@ namespace RuleForge.AI
                 Enum.GetNames(typeof(StatModifierOperation)));
             string stackModes = JsonStringArray(
                 Enum.GetNames(typeof(RuleStackMode)));
+            string scalingSchema = BuildScalingSchema();
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"effectId\":{\"type\":\"string\",\"enum\":" + effectIds + "}," +
+                   "\"kind\":{\"type\":\"string\",\"enum\":" + effectKinds + "}," +
+                   "\"target\":{\"type\":\"string\",\"enum\":" + targets + "}," +
+                   "\"statId\":{\"type\":\"string\",\"enum\":" + stats + "}," +
+                   "\"operation\":{\"type\":\"string\",\"enum\":" + operations + "}," +
+                   "\"value\":{\"type\":\"number\"}," +
+                   "\"stringValue\":{\"type\":\"string\"}," +
+                   "\"stackMode\":{\"type\":\"string\",\"enum\":" + stackModes + "}," +
+                   "\"maxStacks\":{\"type\":\"integer\"}," +
+                   "\"duration\":{\"type\":\"number\"}," +
+                   "\"scaling\":{\"anyOf\":[{\"type\":\"null\"}," + scalingSchema + "]}" +
+                   "},\"required\":[\"effectId\",\"kind\",\"target\",\"statId\",\"operation\",\"value\",\"stringValue\",\"stackMode\",\"maxStacks\",\"duration\",\"scaling\"]}";
+        }
+
+        private static string BuildConditionSchema()
+        {
+            string conditionNames = JsonStringArray(
+                Enum.GetNames(typeof(RuleConditionType)));
+            string comparisons = JsonStringArrayWithEmpty(
+                Enum.GetNames(typeof(RuleComparison)));
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"type\":{\"type\":\"string\",\"enum\":" + conditionNames + "}," +
+                   "\"comparison\":{\"type\":\"string\",\"enum\":" + comparisons + "}," +
+                   "\"value\":{\"type\":\"number\"}," +
+                   "\"stringValue\":{\"type\":\"string\"}" +
+                   "},\"required\":[\"type\",\"comparison\",\"value\",\"stringValue\"]}";
+        }
+
+        private static string BuildScalingSchema()
+        {
             string scalingModes = JsonStringArray(
                 Enum.GetNames(typeof(RuleScalingMode)));
             string scalingSources = JsonStringArray(
                 Enum.GetNames(typeof(RuntimeValueSource)));
-
-            string conditionSchema = "{" +
-                "\"type\":\"object\",\"additionalProperties\":false," +
-                "\"properties\":{" +
-                "\"type\":{\"type\":\"string\",\"enum\":" + conditionNames + "}," +
-                "\"comparison\":{\"type\":\"string\",\"enum\":" + comparisons + "}," +
-                "\"value\":{\"type\":\"number\"}," +
-                "\"stringValue\":{\"type\":\"string\"}" +
-                "},\"required\":[\"type\",\"comparison\",\"value\",\"stringValue\"]}";
-
-            string scalingSchema = "{" +
-                "\"type\":\"object\",\"additionalProperties\":false," +
-                "\"properties\":{" +
-                "\"source\":{\"type\":\"string\",\"enum\":" + scalingSources + "}," +
-                "\"mode\":{\"type\":\"string\",\"enum\":" + scalingModes + "}," +
-                "\"sourceMin\":{\"type\":\"number\"}," +
-                "\"sourceMax\":{\"type\":\"number\"}," +
-                "\"effectMin\":{\"type\":\"number\"}," +
-                "\"effectMax\":{\"type\":\"number\"}" +
-                "},\"required\":[\"source\",\"mode\",\"sourceMin\",\"sourceMax\",\"effectMin\",\"effectMax\"]}";
-
-            string effectSchema = "{" +
-                "\"type\":\"object\",\"additionalProperties\":false," +
-                "\"properties\":{" +
-                "\"effectId\":{\"type\":\"string\",\"enum\":" + effectIds + "}," +
-                "\"kind\":{\"type\":\"string\",\"enum\":" + effectKinds + "}," +
-                "\"target\":{\"type\":\"string\",\"enum\":" + targets + "}," +
-                "\"statId\":{\"type\":\"string\",\"enum\":" + stats + "}," +
-                "\"operation\":{\"type\":\"string\",\"enum\":" + operations + "}," +
-                "\"value\":{\"type\":\"number\"}," +
-                "\"stringValue\":{\"type\":\"string\"}," +
-                "\"stackMode\":{\"type\":\"string\",\"enum\":" + stackModes + "}," +
-                "\"maxStacks\":{\"type\":\"integer\"}," +
-                "\"duration\":{\"type\":\"number\"}," +
-                "\"scaling\":{\"anyOf\":[{\"type\":\"null\"}," + scalingSchema + "]}" +
-                "},\"required\":[\"effectId\",\"kind\",\"target\",\"statId\",\"operation\",\"value\",\"stringValue\",\"stackMode\",\"maxStacks\",\"duration\",\"scaling\"]}";
-
             return "{" +
-                "\"type\":\"object\",\"additionalProperties\":false," +
-                "\"properties\":{" +
-                "\"id\":{\"type\":\"string\"}," +
-                "\"trigger\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{" +
-                "\"type\":{\"type\":\"string\",\"enum\":" + eventNames + "}},\"required\":[\"type\"]}," +
-                "\"conditions\":{\"type\":\"array\",\"items\":" + conditionSchema + "}," +
-                "\"effects\":{\"type\":\"array\",\"items\":" + effectSchema + "}" +
-                "},\"required\":[\"id\",\"trigger\",\"conditions\",\"effects\"]}";
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"source\":{\"type\":\"string\",\"enum\":" + scalingSources + "}," +
+                   "\"mode\":{\"type\":\"string\",\"enum\":" + scalingModes + "}," +
+                   "\"sourceMin\":{\"type\":\"number\"}," +
+                   "\"sourceMax\":{\"type\":\"number\"}," +
+                   "\"effectMin\":{\"type\":\"number\"}," +
+                   "\"effectMax\":{\"type\":\"number\"}" +
+                   "},\"required\":[\"source\",\"mode\",\"sourceMin\",\"sourceMax\",\"effectMin\",\"effectMax\"]}";
         }
 
         private static string BuildEffectIdArray(
@@ -256,6 +388,23 @@ namespace RuleForge.AI
             }
 
             return JsonStringArray(identifiers.ToArray());
+        }
+
+        private static bool HasRandomChance(RuleCondition[] conditions)
+        {
+            for (int index = 0; index < conditions.Length; index++)
+            {
+                if (conditions[index] != null &&
+                    string.Equals(
+                        conditions[index].Type,
+                        RuleConditionType.RandomChance.ToString(),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string JoinEnum<T>() where T : struct

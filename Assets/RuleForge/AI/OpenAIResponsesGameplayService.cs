@@ -35,15 +35,19 @@ namespace RuleForge.AI
             }
 
             string instructions =
-                "You generate RuleForge ChallengeSpec JSON only. Use only the " +
+                "You are the gameplay designer for RuleForge. Generate one " +
+                "RuleForge ChallengeSpec JSON object only. Use only the " +
                 "provided gameplay vocabulary and exact effect mappings. Do not " +
                 "invent events, effects, weapons, operations, or runtime code. " +
-                "Respect requested numeric ratios where possible. Values are " +
-                "suggestions, but stay inside the supplied limits. Produce varied " +
-                "rules based on the user's request, not a fixed template.";
+                "Treat explicit numbers and ratios as requirements when they fit " +
+                "the supplied limits. Choose mechanics that express the player's " +
+                "intent; do not reuse a familiar rule combination merely because " +
+                "it is valid. Return no prose and no markdown.";
             string input =
                 "USER PROMPT:\n" + request.UserPrompt +
                 "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nDESIGN GUIDANCE:\n" +
+                GameplayVocabulary.BuildDesignGuidance() +
                 "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
             AIGameplayResult<string> response = null;
             yield return SendStructuredRequest(
@@ -71,17 +75,26 @@ namespace RuleForge.AI
 
             string instructions =
                 "You modify RuleForge challenges by returning ChallengePatch JSON " +
-                "only. Make the smallest possible change. Keep every rule and " +
-                "value the player did not ask to change. Use only the supplied " +
-                "operations and gameplay vocabulary. For unused operation fields, " +
-                "return empty strings, zero values, and null rule. ModifyGoal " +
-                "must include both goal and goalTarget. AddRule must " +
-                "contain one complete rule.";
+                "only. Make the smallest possible field-level change. Keep every " +
+                "rule, condition, effect, identity, numeric value, goal, and weapon " +
+                "the player did not request unchanged. Prefer a granular Modify " +
+                "operation over RemoveRule/AddRule. Use multiple operations only " +
+                "when the request explicitly requires multiple changes. Treat " +
+                "numbers and ratios as requirements within supplied limits. Use " +
+                "only supplied operations and vocabulary. For unused operation " +
+                "fields, return empty strings, zero values, and null objects. " +
+                "ModifyGoal must include goal and goalTarget. AddRule must contain " +
+                "one complete rule. Use AddCondition/RemoveCondition for randomness " +
+                "or filters, ModifyTrigger for event changes, and effect-level " +
+                "operations instead of replacing a whole rule whenever possible. " +
+                "Return no prose and no markdown.";
             string input =
                 "USER MODIFICATION:\n" + request.UserPrompt +
                 "\n\nCURRENT CHALLENGE JSON:\n" +
                 JsonUtility.ToJson(request.CurrentChallenge, true) +
                 "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nDESIGN GUIDANCE:\n" +
+                GameplayVocabulary.BuildDesignGuidance() +
                 "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
             AIGameplayResult<string> response = null;
             yield return SendStructuredRequest(

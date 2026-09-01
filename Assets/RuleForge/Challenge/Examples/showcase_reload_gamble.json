@@ -60,6 +60,35 @@
           "duration": 0.0
         }
       ]
+    },
+    {
+      "id": "reload_gamble_low_ammo_power",
+      "trigger": {
+        "type": "PlayerAmmoChanged"
+      },
+      "conditions": [],
+      "effects": [
+        {
+          "effectId": "PlayerDamage",
+          "kind": "StatModifier",
+          "target": "Weapon",
+          "statId": "WeaponDamage",
+          "operation": "AddPercent",
+          "value": 0.0,
+          "stringValue": "",
+          "stackMode": "None",
+          "maxStacks": 1,
+          "duration": 0.0,
+          "scaling": {
+            "source": "EventValue",
+            "mode": "Linear",
+            "sourceMin": 0.0,
+            "sourceMax": 1.0,
+            "effectMin": 0.5,
+            "effectMax": 0.0
+          }
+        }
+      ]
     }
   ]
 }

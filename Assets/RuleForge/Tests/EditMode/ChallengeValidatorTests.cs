@@ -3,6 +3,7 @@ using System.Text;
 using NUnit.Framework;
 using RuleForge.Config;
 using RuleForge.DSL;
+using RuleForge.Rules;
 using RuleForge.Validation;
 using UnityEngine;
 
@@ -115,6 +116,53 @@ namespace RuleForge.Tests
             ValidationResult result = validator.Validate(challenge);
 
             Assert.That(result.IsValid, Is.True, result.BuildSummary());
+        }
+
+        [Test]
+        public void EventValueCondition_ComparesPublishedNumericContext()
+        {
+            ConditionEvaluator evaluator = new ConditionEvaluator(() => 0f);
+            RuleCondition[] conditions =
+            {
+                RuleCondition.Create(
+                    RuleConditionType.EventValue.ToString(),
+                    RuleComparison.LessOrEqual.ToString(),
+                    0.25f,
+                    string.Empty)
+            };
+
+            Assert.That(
+                evaluator.EvaluateAll(
+                    conditions,
+                    new GameplayEvent(
+                        GameplayEventType.PlayerAmmoChanged,
+                        value: 0.2f)),
+                Is.True);
+            Assert.That(
+                evaluator.EvaluateAll(
+                    conditions,
+                    new GameplayEvent(
+                        GameplayEventType.PlayerAmmoChanged,
+                        value: 0.5f)),
+                Is.False);
+        }
+
+        [Test]
+        public void BalanceEvaluation_DerivesGrowthAndSnowballTagFromStacking()
+        {
+            string rule = BuildRuleJson("stacking_damage", 0.05f)
+                .Replace(
+                    "\"stackMode\":\"None\",\"maxStacks\":1",
+                    "\"stackMode\":\"Stack\",\"maxStacks\":10");
+            ChallengeSpec challenge = JsonUtility.FromJson<ChallengeSpec>(
+                BuildChallengeJson(rule));
+
+            BalanceEvaluation evaluation =
+                new BalanceEvaluator(balanceConfig, effectCatalog)
+                    .Evaluate(challenge);
+
+            Assert.That(evaluation.Growth, Is.Not.EqualTo(GrowthSpeed.None));
+            Assert.That(evaluation.GameplayTags, Does.Contain("Snowball"));
         }
 
         private static string BuildChallengeJson(string rules)

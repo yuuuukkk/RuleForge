@@ -8,6 +8,7 @@ namespace RuleForge.UI
         private static readonly HashSet<int> Blockers = new HashSet<int>();
         private static CursorLockMode cursorLockBeforeBlocking;
         private static bool cursorVisibleBeforeBlocking;
+        private static float timeScaleBeforeBlocking = 1f;
 
         public static bool IsBlocked => Blockers.Count > 0;
 
@@ -25,9 +26,11 @@ namespace RuleForge.UI
                 {
                     cursorLockBeforeBlocking = Cursor.lockState;
                     cursorVisibleBeforeBlocking = Cursor.visible;
+                    timeScaleBeforeBlocking = Time.timeScale;
                 }
 
                 Blockers.Add(ownerId);
+                Time.timeScale = 0f;
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
                 return;
@@ -38,6 +41,7 @@ namespace RuleForge.UI
                 return;
             }
 
+            Time.timeScale = timeScaleBeforeBlocking;
             Cursor.lockState = cursorLockBeforeBlocking;
             Cursor.visible = cursorVisibleBeforeBlocking;
         }
@@ -48,6 +52,7 @@ namespace RuleForge.UI
             Blockers.Clear();
             cursorLockBeforeBlocking = CursorLockMode.None;
             cursorVisibleBeforeBlocking = true;
+            timeScaleBeforeBlocking = 1f;
         }
     }
 }

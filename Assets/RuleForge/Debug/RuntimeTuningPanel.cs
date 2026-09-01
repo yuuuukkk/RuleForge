@@ -57,6 +57,7 @@ namespace RuleForge.Debugging
                 return;
             }
 
+            GUISkin previousSkin = RuleForgeGuiTheme.Begin();
             float panelHeight = Mathf.Max(240f, Screen.height - 40f);
             GUILayout.BeginArea(
                 new Rect(20f, 20f, 640f, panelHeight),
@@ -80,6 +81,7 @@ namespace RuleForge.Debugging
             DrawStatBreakdown();
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+            RuleForgeGuiTheme.End(previousSkin);
         }
 
         public void Configure(RuleEngine engine)
@@ -263,6 +265,28 @@ namespace RuleForge.Debugging
             GUILayout.Label(RuleForgeLocalization.T(
                 $"Ratio: {ratio}  Result: {balance.Result}",
                 $"比例：{ratio}  结果：{RuleForgeLocalization.DataValue(balance.Result.ToString())}"));
+            GUILayout.Label(RuleForgeLocalization.T(
+                $"Difficulty: {balance.Difficulty}  Growth: {balance.Growth} " +
+                $"({balance.GrowthScore:0.##})",
+                $"难度：{RuleForgeLocalization.DataValue(balance.Difficulty.ToString())}  " +
+                $"成长：{RuleForgeLocalization.DataValue(balance.Growth.ToString())} " +
+                $"({balance.GrowthScore:0.##})"));
+            if (balance.GameplayTags.Count > 0)
+            {
+                string tags = string.Empty;
+                for (int index = 0; index < balance.GameplayTags.Count; index++)
+                {
+                    if (index > 0)
+                    {
+                        tags += " · ";
+                    }
+
+                    tags += RuleForgeLocalization.DataValue(
+                        balance.GameplayTags[index]);
+                }
+
+                GUILayout.Label(RuleForgeLocalization.T("Tags: ", "标签：") + tags);
+            }
             GUILayout.Space(8f);
         }
 

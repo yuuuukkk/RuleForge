@@ -191,6 +191,14 @@ namespace RuleForge.Editor
                     ArtRoot + "GameIcons/White2x/barsHorizontal.png"),
                 Load<Texture2D>(
                     ArtRoot + "UISciFi/Extra/panel_rectangle.png"));
+            hud.ConfigureThemeArt(
+                Load<Texture2D>(
+                    ArtRoot + "UISciFi/Blue/button_square_header_large_rectangle.png"),
+                Load<Texture2D>(
+                    ArtRoot + "UISciFi/Grey/button_square_header_large_rectangle.png"),
+                Load<Texture2D>(
+                    ArtRoot + "UISciFi/Red/button_square_header_large_rectangle.png"),
+                Load<Font>(ArtRoot + "UISciFi/Fonts/Kenney Future.ttf"));
             EditorUtility.SetDirty(hud);
         }
 

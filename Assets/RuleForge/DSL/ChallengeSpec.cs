@@ -90,6 +90,125 @@ namespace RuleForge.DSL
                 effects = ruleEffects ?? Array.Empty<RuleEffect>()
             };
         }
+
+        public void SetTrigger(string triggerType)
+        {
+            trigger = RuleTrigger.Create(triggerType);
+        }
+
+        public void AddCondition(RuleCondition condition)
+        {
+            if (condition == null)
+            {
+                return;
+            }
+
+            RuleCondition[] current = Conditions;
+            RuleCondition[] expanded = new RuleCondition[current.Length + 1];
+            Array.Copy(current, expanded, current.Length);
+            expanded[current.Length] = condition;
+            conditions = expanded;
+        }
+
+        public bool RemoveConditionAt(int index)
+        {
+            RuleCondition[] current = Conditions;
+            if (index < 0 || index >= current.Length)
+            {
+                return false;
+            }
+
+            RuleCondition[] reduced = new RuleCondition[current.Length - 1];
+            if (index > 0)
+            {
+                Array.Copy(current, 0, reduced, 0, index);
+            }
+
+            if (index < current.Length - 1)
+            {
+                Array.Copy(
+                    current,
+                    index + 1,
+                    reduced,
+                    index,
+                    current.Length - index - 1);
+            }
+
+            conditions = reduced;
+            return true;
+        }
+
+        public void AddEffect(RuleEffect effect)
+        {
+            if (effect == null)
+            {
+                return;
+            }
+
+            RuleEffect[] current = Effects;
+            RuleEffect[] expanded = new RuleEffect[current.Length + 1];
+            Array.Copy(current, expanded, current.Length);
+            expanded[current.Length] = effect;
+            effects = expanded;
+        }
+
+        public bool RemoveEffect(string effectId)
+        {
+            int index = FindEffectIndex(effectId);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            RuleEffect[] current = Effects;
+            RuleEffect[] reduced = new RuleEffect[current.Length - 1];
+            if (index > 0)
+            {
+                Array.Copy(current, 0, reduced, 0, index);
+            }
+
+            if (index < current.Length - 1)
+            {
+                Array.Copy(
+                    current,
+                    index + 1,
+                    reduced,
+                    index,
+                    current.Length - index - 1);
+            }
+
+            effects = reduced;
+            return true;
+        }
+
+        public bool ReplaceEffect(string effectId, RuleEffect replacement)
+        {
+            int index = FindEffectIndex(effectId);
+            if (index < 0 || replacement == null)
+            {
+                return false;
+            }
+
+            effects[index] = replacement;
+            return true;
+        }
+
+        private int FindEffectIndex(string effectId)
+        {
+            RuleEffect[] current = Effects;
+            for (int index = 0; index < current.Length; index++)
+            {
+                if (current[index] != null && string.Equals(
+                        current[index].EffectId,
+                        effectId,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
     }
 
     [Serializable]
@@ -208,6 +327,11 @@ namespace RuleForge.DSL
         public void SetDuration(float newDuration)
         {
             duration = newDuration;
+        }
+
+        public void SetScaling(RuleScaling newScaling)
+        {
+            scaling = newScaling;
         }
     }
 

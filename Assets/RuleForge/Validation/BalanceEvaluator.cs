@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using RuleForge.Config;
 using RuleForge.DSL;
 using RuleForge.Rules;
@@ -14,6 +15,23 @@ namespace RuleForge.Validation
         NoSignal
     }
 
+    public enum EstimatedDifficulty
+    {
+        Unknown,
+        Relaxed,
+        Moderate,
+        Hard,
+        Extreme
+    }
+
+    public enum GrowthSpeed
+    {
+        None,
+        Slow,
+        Medium,
+        Fast
+    }
+
     [Serializable]
     public sealed class BalanceEvaluation
     {
@@ -21,6 +39,10 @@ namespace RuleForge.Validation
         [SerializeField] private float penaltyScore;
         [SerializeField] private float rewardPenaltyRatio;
         [SerializeField] private BalanceResult result;
+        [SerializeField] private EstimatedDifficulty estimatedDifficulty;
+        [SerializeField] private float growthScore;
+        [SerializeField] private GrowthSpeed growthSpeed;
+        [SerializeField] private string[] gameplayTags = Array.Empty<string>();
 
         public BalanceEvaluation(
             float reward,
@@ -32,12 +54,41 @@ namespace RuleForge.Validation
             penaltyScore = penalty;
             rewardPenaltyRatio = ratio;
             result = balanceResult;
+            estimatedDifficulty = EstimatedDifficulty.Unknown;
+            growthScore = 0f;
+            growthSpeed = GrowthSpeed.None;
+            gameplayTags = Array.Empty<string>();
+        }
+
+        public BalanceEvaluation(
+            float reward,
+            float penalty,
+            float ratio,
+            BalanceResult balanceResult,
+            EstimatedDifficulty difficulty,
+            float evaluatedGrowthScore,
+            GrowthSpeed evaluatedGrowthSpeed,
+            string[] tags)
+        {
+            rewardScore = reward;
+            penaltyScore = penalty;
+            rewardPenaltyRatio = ratio;
+            result = balanceResult;
+            estimatedDifficulty = difficulty;
+            growthScore = evaluatedGrowthScore;
+            growthSpeed = evaluatedGrowthSpeed;
+            gameplayTags = tags ?? Array.Empty<string>();
         }
 
         public float RewardScore => rewardScore;
         public float PenaltyScore => penaltyScore;
         public float RewardPenaltyRatio => rewardPenaltyRatio;
         public BalanceResult Result => result;
+        public EstimatedDifficulty Difficulty => estimatedDifficulty;
+        public float GrowthScore => growthScore;
+        public GrowthSpeed Growth => growthSpeed;
+        public IReadOnlyList<string> GameplayTags =>
+            gameplayTags ?? Array.Empty<string>();
     }
 
     public sealed class BalanceEvaluator
@@ -72,6 +123,12 @@ namespace RuleForge.Validation
 
             float rewardScore = 0f;
             float penaltyScore = 0f;
+            float growthScore = 0f;
+            bool hasRandom = false;
+            bool hasStackGrowth = false;
+            bool hasScaling = false;
+            bool hasBurst = false;
+            bool hasDamageReward = false;
             GameplayRule[] rules = challenge.Rules;
             for (int ruleIndex = 0; ruleIndex < rules.Length; ruleIndex++)
             {
@@ -82,6 +139,8 @@ namespace RuleForge.Validation
                 }
 
                 float probabilityFactor = GetProbabilityFactor(rule.Conditions);
+                hasRandom |= probabilityFactor < 0.999f;
+                float triggerFrequency = GetTriggerFrequency(rule);
                 RuleEffect[] effects = rule.Effects;
                 for (int effectIndex = 0;
                      effectIndex < effects.Length;
@@ -108,6 +167,33 @@ namespace RuleForge.Validation
                     {
                         penaltyScore += score * Mathf.Max(0f, penaltyStrength);
                     }
+
+                    if (Enum.TryParse(
+                            effect.StackMode,
+                            true,
+                            out RuleStackMode stackMode) &&
+                        stackMode == RuleStackMode.Stack &&
+                        effect.MaxStacks > 1)
+                    {
+                        hasStackGrowth = true;
+                        growthScore += Mathf.Sqrt(effect.MaxStacks) *
+                                       probabilityFactor * triggerFrequency;
+                    }
+
+                    if (effect.Scaling != null &&
+                        !string.IsNullOrWhiteSpace(effect.Scaling.Source))
+                    {
+                        hasScaling = true;
+                        growthScore += 1.5f * triggerFrequency;
+                    }
+
+                    hasBurst |= effect.Duration > 0f;
+                    hasDamageReward |=
+                        definition.Polarity == EffectPolarity.Reward &&
+                        string.Equals(
+                            effect.StatId,
+                            RuleForge.Runtime.Stats.RuntimeStatId.WeaponDamage.ToString(),
+                            StringComparison.OrdinalIgnoreCase);
                 }
             }
 
@@ -117,11 +203,29 @@ namespace RuleForge.Validation
                     ? float.PositiveInfinity
                     : 1f;
             BalanceResult result = ResolveResult(rewardScore, penaltyScore, ratio);
+            EstimatedDifficulty difficulty = ResolveDifficulty(
+                challenge,
+                penaltyScore,
+                result);
+            GrowthSpeed growthSpeed = ResolveGrowthSpeed(growthScore);
+            string[] tags = BuildTags(
+                challenge,
+                rewardScore,
+                penaltyScore,
+                hasRandom,
+                hasStackGrowth,
+                hasScaling,
+                hasBurst,
+                hasDamageReward);
             return new BalanceEvaluation(
                 rewardScore,
                 penaltyScore,
                 ratio,
-                result);
+                result,
+                difficulty,
+                growthScore,
+                growthSpeed,
+                tags);
         }
 
         private float EvaluateEffect(
@@ -153,10 +257,152 @@ namespace RuleForge.Validation
                 repetitionFactor = Mathf.Sqrt(Mathf.Max(1, effect.MaxStacks));
             }
 
+            float durationFactor = effect.Duration > 0f
+                ? Mathf.Clamp(Mathf.Sqrt(effect.Duration / 10f), 0.35f, 1.25f)
+                : 1f;
+
             return definition.BalanceWeight *
                    normalizedMagnitude *
                    repetitionFactor *
-                   probabilityFactor;
+                   probabilityFactor *
+                   durationFactor;
+        }
+
+        private static EstimatedDifficulty ResolveDifficulty(
+            ChallengeSpec challenge,
+            float penaltyScore,
+            BalanceResult result)
+        {
+            float score = penaltyScore;
+            if (result == BalanceResult.RiskHeavy)
+            {
+                score *= 1.2f;
+            }
+
+            if (string.Equals(
+                    challenge.Goal,
+                    ChallengeGoalType.Survive.ToString(),
+                    StringComparison.OrdinalIgnoreCase) &&
+                challenge.GoalTarget >= 45f)
+            {
+                score += 0.75f;
+            }
+
+            if (score <= 0f)
+            {
+                return EstimatedDifficulty.Relaxed;
+            }
+
+            if (score < 0.75f)
+            {
+                return EstimatedDifficulty.Relaxed;
+            }
+
+            if (score < 2.5f)
+            {
+                return EstimatedDifficulty.Moderate;
+            }
+
+            if (score < 6f)
+            {
+                return EstimatedDifficulty.Hard;
+            }
+
+            return EstimatedDifficulty.Extreme;
+        }
+
+        private static GrowthSpeed ResolveGrowthSpeed(float score)
+        {
+            if (score <= 0f)
+            {
+                return GrowthSpeed.None;
+            }
+
+            if (score < 1.5f)
+            {
+                return GrowthSpeed.Slow;
+            }
+
+            return score < 4f ? GrowthSpeed.Medium : GrowthSpeed.Fast;
+        }
+
+        private static string[] BuildTags(
+            ChallengeSpec challenge,
+            float rewardScore,
+            float penaltyScore,
+            bool hasRandom,
+            bool hasStackGrowth,
+            bool hasScaling,
+            bool hasBurst,
+            bool hasDamageReward)
+        {
+            System.Collections.Generic.List<string> tags =
+                new System.Collections.Generic.List<string>();
+            if (rewardScore >= 0.75f && penaltyScore >= 0.75f)
+            {
+                tags.Add("High Risk / High Reward");
+            }
+
+            if (hasStackGrowth)
+            {
+                tags.Add("Snowball");
+            }
+
+            if (hasDamageReward && penaltyScore > 0f)
+            {
+                tags.Add("Glass Cannon");
+            }
+
+            if (hasRandom)
+            {
+                tags.Add("Random");
+            }
+
+            if (string.Equals(
+                    challenge.Goal,
+                    ChallengeGoalType.Survive.ToString(),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                tags.Add("Survival");
+            }
+
+            if (hasScaling)
+            {
+                tags.Add("Scaling");
+            }
+
+            if (hasBurst)
+            {
+                tags.Add("Burst");
+            }
+
+            return tags.ToArray();
+        }
+
+        private static float GetTriggerFrequency(GameplayRule rule)
+        {
+            if (rule?.Trigger == null || !Enum.TryParse(
+                    rule.Trigger.Type,
+                    true,
+                    out GameplayEventType trigger))
+            {
+                return 1f;
+            }
+
+            switch (trigger)
+            {
+                case GameplayEventType.WeaponFired:
+                case GameplayEventType.EnemyHit:
+                case GameplayEventType.PlayerHPChanged:
+                case GameplayEventType.PlayerAmmoChanged:
+                    return 1.5f;
+                case GameplayEventType.PlayerReload:
+                    return 0.65f;
+                case GameplayEventType.GameStarted:
+                    return 0.1f;
+                default:
+                    return 1f;
+            }
         }
 
         private BalanceResult ResolveResult(

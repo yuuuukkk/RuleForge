@@ -1,4 +1,5 @@
 using System;
+using RuleForge.Rules;
 using UnityEngine;
 
 namespace RuleForge.Weapons
@@ -48,6 +49,17 @@ namespace RuleForge.Weapons
             BuildPool();
         }
 
+        private void OnEnable()
+        {
+            GameplayEventBus.EventPublished -= HandleGameplayEvent;
+            GameplayEventBus.EventPublished += HandleGameplayEvent;
+        }
+
+        private void OnDisable()
+        {
+            GameplayEventBus.EventPublished -= HandleGameplayEvent;
+        }
+
         private void Update()
         {
             for (int index = 0; index < tracers.Length; index++)
@@ -80,12 +92,32 @@ namespace RuleForge.Weapons
             }
 
             Vector3 muzzlePosition = ResolveMuzzlePosition(fireDirection);
+            weaponVisual?.PlayRecoil();
             ShowTracer(muzzlePosition, hitPoint);
             ShowFlash(muzzlePosition, muzzleSize, muzzleMaterial);
             if (didHit)
             {
                 ShowFlash(hitPoint, impactSize, impactMaterial);
             }
+        }
+
+        private void HandleGameplayEvent(GameplayEvent gameplayEvent)
+        {
+            if (gameplayEvent.Type != GameplayEventType.EnemyKilled ||
+                gameplayEvent.Source == null)
+            {
+                return;
+            }
+
+            if (effectRoot == null)
+            {
+                BuildPool();
+            }
+
+            ShowFlash(
+                gameplayEvent.Source.transform.position + Vector3.up * 0.7f,
+                impactSize * 3.2f,
+                muzzleMaterial);
         }
 
         private Vector3 ResolveMuzzlePosition(Vector3 fireDirection)

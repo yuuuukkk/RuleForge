@@ -10,20 +10,32 @@ namespace RuleForge.Enemies
     {
         private CharacterController characterController;
         private EnemyRuntimeStats runtimeStats;
+        private EnemyAttackVisual attackVisual;
         private Transform target;
         private PlayerHealth targetHealth;
         private float nextAttackTime;
+        private bool attackPending;
+        private float attackHitsAt;
+
+        [Header("Attack Readability")]
+        [SerializeField, Min(0.05f)] private float attackWindupDuration = 0.45f;
 
         private void Awake()
         {
             characterController = GetComponent<CharacterController>();
             runtimeStats = GetComponent<EnemyRuntimeStats>();
+            attackVisual = GetComponent<EnemyAttackVisual>();
+            if (attackVisual == null)
+            {
+                attackVisual = gameObject.AddComponent<EnemyAttackVisual>();
+            }
         }
 
         private void Update()
         {
             if (!TryAcquireTarget())
             {
+                CancelPendingAttack();
                 characterController.SimpleMove(Vector3.zero);
                 return;
             }
@@ -45,6 +57,7 @@ namespace RuleForge.Enemies
 
             if (distance > runtimeStats.StoppingDistanceStat.FinalValue)
             {
+                CancelPendingAttack();
                 characterController.SimpleMove(
                     direction * runtimeStats.MoveSpeedStat.FinalValue);
                 return;
@@ -91,18 +104,50 @@ namespace RuleForge.Enemies
             if (targetHealth == null ||
                 !targetHealth.IsAlive ||
                 contactDamage <= 0f ||
-                attacksPerSecond <= 0f ||
-                Time.time < nextAttackTime)
+                attacksPerSecond <= 0f)
+            {
+                CancelPendingAttack();
+                return;
+            }
+
+            if (attackPending)
+            {
+                if (Time.time < attackHitsAt)
+                {
+                    return;
+                }
+
+                attackPending = false;
+                nextAttackTime = Time.time + 1f / attacksPerSecond;
+                attackVisual?.ShowImpact();
+                targetHealth.TakeDamage(new DamageInfo(
+                    contactDamage,
+                    target.position,
+                    direction,
+                    gameObject));
+                return;
+            }
+
+            if (Time.time < nextAttackTime)
             {
                 return;
             }
 
-            nextAttackTime = Time.time + 1f / attacksPerSecond;
-            targetHealth.TakeDamage(new DamageInfo(
-                contactDamage,
-                target.position,
-                direction,
-                gameObject));
+            attackPending = true;
+            attackHitsAt = Time.time + attackWindupDuration;
+            attackVisual?.BeginWindup(attackWindupDuration);
+        }
+
+        private void CancelPendingAttack()
+        {
+            if (!attackPending)
+            {
+                return;
+            }
+
+            attackPending = false;
+            attackHitsAt = 0f;
+            attackVisual?.Cancel();
         }
     }
 }

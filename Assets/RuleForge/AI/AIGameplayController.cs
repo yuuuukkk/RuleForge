@@ -18,6 +18,8 @@ namespace RuleForge.AI
         [SerializeField, Min(0)] private int activeProviderIndex;
 
         private bool isBusy;
+        private string previousGenerationPrompt = string.Empty;
+        private string previousGenerationStructure = string.Empty;
 
         public event Action<AIGenerationTelemetry> RequestCompleted;
 
@@ -51,6 +53,11 @@ namespace RuleForge.AI
             }
         }
 
+        private void OnEnable()
+        {
+            SelectPreferredProvider();
+        }
+
         public void Configure(
             RuleEngine engine,
             params MonoBehaviour[] providers)
@@ -61,6 +68,7 @@ namespace RuleForge.AI
                 activeProviderIndex,
                 0,
                 Mathf.Max(0, providerComponents.Length - 1));
+            SelectPreferredProvider();
         }
 
         public void SelectNextProvider()
@@ -78,6 +86,46 @@ namespace RuleForge.AI
                 if (providerComponents[candidate] is IAIGameplayService)
                 {
                     activeProviderIndex = candidate;
+                    return;
+                }
+            }
+        }
+
+        private void SelectPreferredProvider()
+        {
+            if (providerComponents == null || providerComponents.Length == 0)
+            {
+                activeProviderIndex = 0;
+                return;
+            }
+
+            for (int index = 0; index < providerComponents.Length; index++)
+            {
+                if (providerComponents[index] is IAIGameplayService provider &&
+                    provider.ProviderKind == AIProviderKind.Real &&
+                    provider.IsConfigured)
+                {
+                    activeProviderIndex = index;
+                    return;
+                }
+            }
+
+            activeProviderIndex = Mathf.Clamp(
+                activeProviderIndex,
+                0,
+                providerComponents.Length - 1);
+            if (providerComponents[activeProviderIndex] is IAIGameplayService current &&
+                current.IsConfigured)
+            {
+                return;
+            }
+
+            for (int index = 0; index < providerComponents.Length; index++)
+            {
+                if (providerComponents[index] is IAIGameplayService provider &&
+                    provider.IsConfigured)
+                {
+                    activeProviderIndex = index;
                     return;
                 }
             }
@@ -130,7 +178,7 @@ namespace RuleForge.AI
             AIChallengeGenerationRequest request =
                 new AIChallengeGenerationRequest(
                     prompt,
-                    BuildPreferences(),
+                    BuildGenerationPreferences(),
                     BuildVocabulary(),
                     GameplayVocabulary.BuildChallengeSchema(EffectCatalog));
             AIGameplayResult<ChallengeSpec> result = null;
@@ -160,6 +208,12 @@ namespace RuleForge.AI
             AIChallengePreview preview = CreatePreview(
                 result.Value,
                 "AI CREATED");
+            if (preview.Success && preview.Challenge != null)
+            {
+                previousGenerationPrompt = prompt;
+                previousGenerationStructure =
+                    GameplayVocabulary.BuildStructureSummary(preview.Challenge);
+            }
             PublishTelemetry(
                 "Generate",
                 provider,
@@ -329,6 +383,24 @@ namespace RuleForge.AI
                 $"Current goal: {active?.Goal ?? "KillCount"} " +
                 $"target {(active?.GoalTarget ?? 10f):0.##}. " +
                 $"Current weapon: {active?.Weapon ?? "Assault Rifle"}.";
+        }
+
+        private string BuildGenerationPreferences()
+        {
+            string preferences = BuildPreferences();
+            if (string.IsNullOrWhiteSpace(previousGenerationPrompt) ||
+                string.IsNullOrWhiteSpace(previousGenerationStructure))
+            {
+                return preferences;
+            }
+
+            return preferences +
+                   " Previous user prompt: " + previousGenerationPrompt +
+                   ". Previous structural result: " +
+                   previousGenerationStructure +
+                   ". Compare the new request with this context. If its gameplay " +
+                   "intent differs, choose a materially different valid structure; " +
+                   "do not vary names alone.";
         }
 
         private string BuildVocabulary()

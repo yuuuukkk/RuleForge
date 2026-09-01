@@ -77,7 +77,10 @@ namespace RuleForge.Editor
         [MenuItem("RuleForge/Showcases/Load 01 Blood Pact")]
         public static void LoadBloodPact()
         {
-            LoadShowcase(Examples + "blood_pact.json", "Blood Pact");
+            LoadShowcase(
+                Examples + "blood_pact.json",
+                "Blood Pact",
+                "生存并击杀 10 个敌人；每次击杀使我的伤害提高 5%，敌人速度提高 8%，最多叠加 10 次。风险成长必须快于奖励。");
         }
 
         [MenuItem("RuleForge/Showcases/Load 02 Last Stand")]
@@ -85,7 +88,8 @@ namespace RuleForge.Editor
         {
             LoadShowcase(
                 Examples + "showcase_last_stand.json",
-                "Last Stand");
+                "Last Stand",
+                "做一个残血强化的 30 秒生存玩法：生命越低伤害越高，但移动速度同时下降，变化应随当前生命连续缩放。");
         }
 
         [MenuItem("RuleForge/Showcases/Load 03 Reload Gamble")]
@@ -93,10 +97,14 @@ namespace RuleForge.Editor
         {
             LoadShowcase(
                 Examples + "showcase_reload_gamble.json",
-                "Reload Gamble");
+                "Reload Gamble",
+                "做一个换弹赌博玩法：换弹有 30% 概率生成 Runner；击杀 Runner 返还弹药；弹匣越空伤害越高。");
         }
 
-        private static void LoadShowcase(string path, string displayName)
+        private static void LoadShowcase(
+            string path,
+            string displayName,
+            string diagnosticPrompt)
         {
             SetupMilestone10AnalyticsAndShowcases();
             TextAsset challenge = Load<TextAsset>(path);
@@ -111,6 +119,14 @@ namespace RuleForge.Editor
                 serializedEngine.FindProperty("challengeJson");
             challengeProperty.objectReferenceValue = challenge;
             serializedEngine.ApplyModifiedPropertiesWithoutUndo();
+
+            ChallengeCreatorPanel creatorPanel =
+                UnityEngine.Object.FindObjectOfType<ChallengeCreatorPanel>();
+            if (creatorPanel != null)
+            {
+                creatorPanel.ConfigureDiagnosticSourcePrompt(diagnosticPrompt);
+                EditorUtility.SetDirty(creatorPanel);
+            }
 
             Scene scene = SceneManager.GetActiveScene();
             EditorUtility.SetDirty(ruleEngine);

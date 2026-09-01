@@ -288,9 +288,41 @@ namespace RuleForge.Validation
                         $"{path}.comparison '{condition.Comparison}' is unknown.");
                 }
 
+                if (conditionType == RuleConditionType.EventValue)
+                {
+                    if (!Enum.TryParse(
+                            condition.Comparison,
+                            true,
+                            out RuleComparison numericComparison) ||
+                        !IsNumericComparison(numericComparison))
+                    {
+                        result.AddError(
+                            $"{path}.comparison requires a numeric comparison.");
+                    }
+
+                    if (hasKnownTrigger && !ProvidesNumericValue(triggerType))
+                    {
+                        result.AddError(
+                            $"{path} is incompatible with trigger '{triggerType}', which has no documented numeric value.");
+                    }
+
+                    continue;
+                }
+
                 if (conditionType != RuleConditionType.EnemyType)
                 {
                     continue;
+                }
+
+                if (!Enum.TryParse(
+                        condition.Comparison,
+                        true,
+                        out RuleComparison textComparison) ||
+                    (textComparison != RuleComparison.Equals &&
+                     textComparison != RuleComparison.NotEquals))
+                {
+                    result.AddError(
+                        $"{path}.comparison requires Equals or NotEquals for EnemyType.");
                 }
 
                 if (string.IsNullOrWhiteSpace(condition.StringValue))
@@ -550,6 +582,26 @@ namespace RuleForge.Validation
             return triggerType == GameplayEventType.EnemyKilled ||
                    triggerType == GameplayEventType.EnemyHit ||
                    triggerType == GameplayEventType.Headshot;
+        }
+
+        private static bool ProvidesNumericValue(GameplayEventType triggerType)
+        {
+            return triggerType == GameplayEventType.EnemyHit ||
+                   triggerType == GameplayEventType.Headshot ||
+                   triggerType == GameplayEventType.PlayerHit ||
+                   triggerType == GameplayEventType.WeaponFired ||
+                   triggerType == GameplayEventType.PlayerHPChanged ||
+                   triggerType == GameplayEventType.PlayerAmmoChanged;
+        }
+
+        private static bool IsNumericComparison(RuleComparison comparison)
+        {
+            return comparison == RuleComparison.Equals ||
+                   comparison == RuleComparison.NotEquals ||
+                   comparison == RuleComparison.LessThan ||
+                   comparison == RuleComparison.LessOrEqual ||
+                   comparison == RuleComparison.GreaterThan ||
+                   comparison == RuleComparison.GreaterOrEqual;
         }
 
         private static bool TargetSupportsStat(

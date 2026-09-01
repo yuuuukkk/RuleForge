@@ -21,6 +21,8 @@ namespace RuleForge.Player
 
         public event Action<float, float> HealthChanged;
 
+        public event Action<DamageInfo> Damaged;
+
         public event Action Died;
 
         public float CurrentHealth => currentHealth;
@@ -67,19 +69,20 @@ namespace RuleForge.Player
             }
 
             nextDamageAllowedAt = Time.time + hitInvulnerabilityDuration;
+            float healthBefore = CurrentHealth;
             currentHealth = Mathf.Max(0f, CurrentHealth - damageInfo.Amount);
+            float appliedDamage = healthBefore - CurrentHealth;
             HealthChanged?.Invoke(CurrentHealth, MaxHealth);
+            Damaged?.Invoke(damageInfo);
             GameplayEventBus.Publish(new GameplayEvent(
                 GameplayEventType.PlayerHit,
                 gameObject,
                 damageInfo.Source,
-                value: HealthPercent));
+                value: appliedDamage));
             PublishHealthChanged(damageInfo.Source);
 
             if (!IsAlive)
             {
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
                 Died?.Invoke();
                 Debug.Log("Player defeated.", this);
             }

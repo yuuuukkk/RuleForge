@@ -13,6 +13,7 @@ namespace RuleForge.Rules
         PlayerHit,
         PlayerReload,
         WeaponFired,
+        PlayerAmmoChanged,
         TimerInterval,
         KillStreakReached,
         HeadshotStreakReached,
@@ -30,6 +31,7 @@ namespace RuleForge.Rules
             GameplayEventType.PlayerHit,
             GameplayEventType.PlayerReload,
             GameplayEventType.WeaponFired,
+            GameplayEventType.PlayerAmmoChanged,
             GameplayEventType.PlayerHPChanged
         };
 

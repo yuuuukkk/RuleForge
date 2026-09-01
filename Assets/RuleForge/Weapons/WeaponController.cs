@@ -129,6 +129,7 @@ namespace RuleForge.Weapons
 
             nextFireTime = Time.time + 1f / shotsPerSecond;
             currentMagazineAmmo--;
+            PublishAmmoChanged();
             Fired?.Invoke();
             GameplayEventBus.Publish(new GameplayEvent(
                 GameplayEventType.WeaponFired,
@@ -291,6 +292,7 @@ namespace RuleForge.Weapons
                 runtimeStats != null ? runtimeStats.StartingReserveAmmoStat : null,
                 0);
             isReloading = false;
+            PublishAmmoChanged();
         }
 
         private void CompleteReload()
@@ -303,6 +305,22 @@ namespace RuleForge.Weapons
             currentMagazineAmmo += transferredAmmo;
             reserveAmmo -= transferredAmmo;
             isReloading = false;
+            PublishAmmoChanged();
+        }
+
+        private void PublishAmmoChanged()
+        {
+            int capacity = GetRoundedStat(
+                runtimeStats != null ? runtimeStats.MagazineCapacityStat : null,
+                1);
+            float magazinePercent = capacity > 0
+                ? Mathf.Clamp01((float)currentMagazineAmmo / capacity)
+                : 0f;
+            GameplayEventBus.Publish(new GameplayEvent(
+                GameplayEventType.PlayerAmmoChanged,
+                gameObject,
+                gameObject,
+                value: magazinePercent));
         }
 
         private static int GetRoundedStat(

@@ -18,11 +18,45 @@ namespace RuleForge.Weapons
     {
         [SerializeField] private WeaponVisualBinding[] bindings =
             Array.Empty<WeaponVisualBinding>();
+        [Header("Fire Feedback")]
+        [SerializeField, Min(0f)] private float recoilDistance = 0.035f;
+        [SerializeField, Min(0f)] private float recoilAngle = 2.5f;
+        [SerializeField, Min(0.1f)] private float recoilReturnSpeed = 18f;
 
         [NonSerialized] private MaterialPropertyBlock properties;
         private GameObject activeModel;
+        private Vector3 restLocalPosition;
+        private Quaternion restLocalRotation;
+        private float recoilAmount;
 
         public WeaponVisualBinding[] Bindings => bindings;
+
+        private void Awake()
+        {
+            restLocalPosition = transform.localPosition;
+            restLocalRotation = transform.localRotation;
+        }
+
+        private void LateUpdate()
+        {
+            recoilAmount = Mathf.MoveTowards(
+                recoilAmount,
+                0f,
+                recoilReturnSpeed * Time.deltaTime);
+            transform.localPosition = restLocalPosition +
+                                      Vector3.back *
+                                      (recoilDistance * recoilAmount);
+            transform.localRotation = restLocalRotation *
+                                      Quaternion.Euler(
+                                          -recoilAngle * recoilAmount,
+                                          0f,
+                                          0f);
+        }
+
+        public void PlayRecoil()
+        {
+            recoilAmount = 1f;
+        }
 
         public bool TryGetMuzzleWorldPosition(
             Vector3 fireDirection,
@@ -75,6 +109,8 @@ namespace RuleForge.Weapons
         public void Configure(WeaponVisualBinding[] visualBindings)
         {
             bindings = visualBindings ?? Array.Empty<WeaponVisualBinding>();
+            restLocalPosition = transform.localPosition;
+            restLocalRotation = transform.localRotation;
         }
 
         public bool HasBinding(int index)

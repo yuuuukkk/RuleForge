@@ -14,7 +14,16 @@ namespace RuleForge.AI
         ModifyMaxStack,
         ModifyDuration,
         ModifyProbability,
-        ModifyGoal
+        ModifyGoal,
+        ModifyWeapon,
+        ModifyCondition,
+        ModifyScaling,
+        ModifyTrigger,
+        AddCondition,
+        RemoveCondition,
+        AddEffect,
+        RemoveEffect,
+        ReplaceEffect
     }
 
     [Serializable]
@@ -40,6 +49,11 @@ namespace RuleForge.AI
         [SerializeField] private float probability;
         [SerializeField] private string goal;
         [SerializeField] private float goalTarget;
+        [SerializeField] private string weapon;
+        [SerializeField] private string trigger;
+        [SerializeField] private RuleCondition condition;
+        [SerializeField] private RuleEffect effect;
+        [SerializeField] private RuleScaling scaling;
         [SerializeField] private GameplayRule rule;
 
         public string Operation => operation ?? string.Empty;
@@ -52,6 +66,11 @@ namespace RuleForge.AI
         public float Probability => probability;
         public string Goal => goal ?? string.Empty;
         public float GoalTarget => goalTarget;
+        public string Weapon => weapon ?? string.Empty;
+        public string Trigger => trigger ?? string.Empty;
+        public RuleCondition Condition => condition;
+        public RuleEffect Effect => effect;
+        public RuleScaling Scaling => scaling;
         public GameplayRule Rule => rule;
     }
 
@@ -88,6 +107,7 @@ namespace RuleForge.AI
                 new List<GameplayRule>(clone.Rules);
             string goal = clone.Goal;
             float goalTarget = clone.GoalTarget;
+            string weapon = clone.Weapon;
             ChallengePatchOperation[] operations = patch.Operations;
             for (int index = 0; index < operations.Length; index++)
             {
@@ -97,6 +117,7 @@ namespace RuleForge.AI
                         rules,
                         ref goal,
                         ref goalTarget,
+                        ref weapon,
                         out error))
                 {
                     error = $"operations[{index}]: {error}";
@@ -109,7 +130,7 @@ namespace RuleForge.AI
                 clone.DisplayName,
                 goal,
                 goalTarget,
-                clone.Weapon,
+                weapon,
                 rules.ToArray());
             error = string.Empty;
             return true;
@@ -120,6 +141,7 @@ namespace RuleForge.AI
             List<GameplayRule> rules,
             ref string goal,
             ref float goalTarget,
+            ref string weapon,
             out string error)
         {
             if (operation == null ||
@@ -142,6 +164,19 @@ namespace RuleForge.AI
 
                 goal = operation.Goal.Trim();
                 goalTarget = operation.GoalTarget;
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.ModifyWeapon)
+            {
+                if (string.IsNullOrWhiteSpace(operation.Weapon))
+                {
+                    error = "ModifyWeapon requires a non-empty weapon.";
+                    return false;
+                }
+
+                weapon = operation.Weapon.Trim();
                 error = string.Empty;
                 return true;
             }
@@ -180,6 +215,114 @@ namespace RuleForge.AI
             }
 
             GameplayRule rule = rules[ruleIndex];
+            if (operationType == ChallengePatchOperationType.ModifyTrigger)
+            {
+                if (string.IsNullOrWhiteSpace(operation.Trigger))
+                {
+                    error = "ModifyTrigger requires a non-empty trigger.";
+                    return false;
+                }
+
+                rule.SetTrigger(operation.Trigger.Trim());
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.AddCondition)
+            {
+                if (operation.Condition == null)
+                {
+                    error = "AddCondition requires a complete condition.";
+                    return false;
+                }
+
+                rule.AddCondition(operation.Condition);
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.RemoveCondition)
+            {
+                if (!rule.RemoveConditionAt(operation.ConditionIndex))
+                {
+                    error = $"Condition index {operation.ConditionIndex} is out of range.";
+                    return false;
+                }
+
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.ModifyCondition)
+            {
+                RuleCondition[] conditions = rule.Conditions;
+                int conditionIndex = operation.ConditionIndex;
+                if (conditionIndex < 0 || conditionIndex >= conditions.Length)
+                {
+                    error = $"Condition index {conditionIndex} is out of range.";
+                    return false;
+                }
+
+                if (operation.Condition == null)
+                {
+                    error = "ModifyCondition requires a complete condition.";
+                    return false;
+                }
+
+                conditions[conditionIndex] = operation.Condition;
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.AddEffect)
+            {
+                if (operation.Effect == null)
+                {
+                    error = "AddEffect requires a complete effect.";
+                    return false;
+                }
+
+                if (FindEffect(rule, operation.Effect.EffectId) != null)
+                {
+                    error = $"Effect '{operation.Effect.EffectId}' already exists.";
+                    return false;
+                }
+
+                rule.AddEffect(operation.Effect);
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.RemoveEffect)
+            {
+                if (!rule.RemoveEffect(operation.EffectId))
+                {
+                    error = $"Effect '{operation.EffectId}' was not found in rule '{operation.RuleId}'.";
+                    return false;
+                }
+
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.ReplaceEffect)
+            {
+                if (operation.Effect == null)
+                {
+                    error = "ReplaceEffect requires a complete effect.";
+                    return false;
+                }
+
+                if (!rule.ReplaceEffect(operation.EffectId, operation.Effect))
+                {
+                    error = $"Effect '{operation.EffectId}' was not found in rule '{operation.RuleId}'.";
+                    return false;
+                }
+
+                error = string.Empty;
+                return true;
+            }
+
             if (operationType == ChallengePatchOperationType.ModifyProbability)
             {
                 RuleCondition[] conditions = rule.Conditions;
@@ -225,6 +368,9 @@ namespace RuleForge.AI
                     break;
                 case ChallengePatchOperationType.ModifyDuration:
                     effect.SetDuration(operation.Duration);
+                    break;
+                case ChallengePatchOperationType.ModifyScaling:
+                    effect.SetScaling(operation.Scaling);
                     break;
                 default:
                     error = $"Operation '{operation.Operation}' is unsupported.";
