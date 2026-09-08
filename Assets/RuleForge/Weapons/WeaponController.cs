@@ -20,6 +20,7 @@ namespace RuleForge.Weapons
         private WeaponRuntimeStats runtimeStats;
         private PlayerHealth ownerHealth;
         private WeaponFireVisualController fireVisuals;
+        private WeaponVisualController weaponVisuals;
         private float nextFireTime;
 
         [Header("Runtime Ammo Debug")]
@@ -53,9 +54,8 @@ namespace RuleForge.Weapons
                 fireVisuals = gameObject.AddComponent<WeaponFireVisualController>();
             }
 
-            fireVisuals.Configure(
-                aimCamera,
-                GetComponentInChildren<WeaponVisualController>(true));
+            weaponVisuals = GetComponentInChildren<WeaponVisualController>(true);
+            fireVisuals.Configure(aimCamera, weaponVisuals);
             ResetAmmo();
         }
 
@@ -100,7 +100,9 @@ namespace RuleForge.Weapons
             {
                 fireVisuals.Configure(
                     aimCamera,
-                    GetComponentInChildren<WeaponVisualController>(true));
+                    weaponVisuals != null
+                        ? weaponVisuals
+                        : GetComponentInChildren<WeaponVisualController>(true));
             }
         }
 
@@ -258,6 +260,7 @@ namespace RuleForge.Weapons
                 ? runtimeStats.ReloadDurationStat.FinalValue
                 : 0f;
             reloadCompleteTime = Time.time + Mathf.Max(0f, reloadDuration);
+            weaponVisuals?.PlayReload(reloadDuration);
             GameplayEventBus.Publish(new GameplayEvent(
                 GameplayEventType.PlayerReload,
                 gameObject,

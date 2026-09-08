@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using RuleForge.Config;
+using RuleForge.Runtime.Goals;
 using UnityEngine;
 
 namespace RuleForge.Enemies
@@ -13,16 +14,66 @@ namespace RuleForge.Enemies
         [SerializeField] private EnemyConfig[] enemyTypes =
             Array.Empty<EnemyConfig>();
 
+        [Header("Challenge Pacing")]
+        [SerializeField] private ChallengeGoalController goalController;
+        [SerializeField, Range(0f, 1f)] private float pressureTierOneAt = 0.38f;
+        [SerializeField, Range(0f, 1f)] private float pressureTierTwoAt = 0.72f;
+        [SerializeField, Min(0)] private int enemiesPerPressureTier = 1;
+        [SerializeField, Min(0.1f)] private float pacingRefreshInterval = 0.5f;
+        [SerializeField, Min(0f)] private float preparationDuration = 1.5f;
+
         private readonly HashSet<EnemyHealth> aliveEnemies = new HashSet<EnemyHealth>();
         private int nextSpawnPointIndex;
         private int nextEnemyTypeIndex;
+        private int pressureTier;
+        private float nextPacingRefreshAt;
+        private float preparationEndsAt;
+        private bool waitingForPreparation;
 
         public event Action<EnemyHealth> EnemySpawned;
 
         public int AliveEnemyCount => aliveEnemies.Count;
+        public int PressureTier => pressureTier;
+        public bool IsPreparing => waitingForPreparation;
+        public float ChallengeProgress => goalController != null
+            ? goalController.ProgressNormalized
+            : 0f;
 
         private void Start()
         {
+            ResolveGoalController();
+            BeginPreparation();
+        }
+
+        private void Update()
+        {
+            if (Time.time < nextPacingRefreshAt)
+            {
+                return;
+            }
+
+            nextPacingRefreshAt = Time.time + pacingRefreshInterval;
+            ResolveGoalController();
+            if (waitingForPreparation)
+            {
+                if (goalController == null ||
+                    goalController.State != ChallengeGoalState.Running ||
+                    Time.time < preparationEndsAt)
+                {
+                    return;
+                }
+
+                waitingForPreparation = false;
+                FillMissingEnemies();
+            }
+
+            int nextTier = CalculatePressureTier();
+            if (nextTier == pressureTier)
+            {
+                return;
+            }
+
+            pressureTier = nextTier;
             FillMissingEnemies();
         }
 
@@ -142,7 +193,9 @@ namespace RuleForge.Enemies
 
             nextSpawnPointIndex = 0;
             nextEnemyTypeIndex = 0;
-            FillMissingEnemies();
+            pressureTier = 0;
+            nextPacingRefreshAt = 0f;
+            BeginPreparation();
         }
 
         private void FillMissingEnemies()
@@ -201,7 +254,10 @@ namespace RuleForge.Enemies
 
             if (baseline != null)
             {
-                return Mathf.Max(1, baseline.DesiredAliveEnemies);
+                return Mathf.Max(
+                    1,
+                    baseline.DesiredAliveEnemies +
+                    pressureTier * enemiesPerPressureTier);
             }
 
             EnemyRuntimeStats prefabStats = enemyPrefab != null
@@ -211,8 +267,47 @@ namespace RuleForge.Enemies
                 ? Mathf.Max(
                     1,
                     Mathf.RoundToInt(
-                        prefabStats.DesiredAliveEnemiesStat.FinalValue))
+                        prefabStats.DesiredAliveEnemiesStat.FinalValue) +
+                    pressureTier * enemiesPerPressureTier)
                 : 0;
+        }
+
+        private int CalculatePressureTier()
+        {
+            if (goalController == null ||
+                goalController.State != ChallengeGoalState.Running)
+            {
+                return 0;
+            }
+
+            float progress = goalController.ProgressNormalized;
+            if (progress >= Mathf.Max(pressureTierOneAt, pressureTierTwoAt))
+            {
+                return 2;
+            }
+
+            return progress >= Mathf.Min(pressureTierOneAt, pressureTierTwoAt)
+                ? 1
+                : 0;
+        }
+
+        private void ResolveGoalController()
+        {
+            if (goalController == null)
+            {
+                goalController = FindObjectOfType<ChallengeGoalController>();
+            }
+        }
+
+        private void BeginPreparation()
+        {
+            pressureTier = 0;
+            waitingForPreparation = preparationDuration > 0f;
+            preparationEndsAt = Time.time + preparationDuration;
+            if (!waitingForPreparation)
+            {
+                FillMissingEnemies();
+            }
         }
 
         private EnemyConfig GetNextEnemyConfig()

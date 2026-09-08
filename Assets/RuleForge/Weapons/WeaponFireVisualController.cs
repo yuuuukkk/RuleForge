@@ -30,7 +30,7 @@ namespace RuleForge.Weapons
         private Transform effectRoot;
         private LineRenderer[] tracers;
         private float[] tracerExpiry;
-        private GameObject[] flashes;
+        private ParticleSystem[] flashes;
         private float[] flashExpiry;
         private Material tracerMaterial;
         private Material muzzleMaterial;
@@ -73,10 +73,11 @@ namespace RuleForge.Weapons
 
             for (int index = 0; index < flashes.Length; index++)
             {
-                if (flashes[index].activeSelf &&
+                if (flashes[index].gameObject.activeSelf &&
                     Time.time >= flashExpiry[index])
                 {
-                    flashes[index].SetActive(false);
+                    flashes[index].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                    flashes[index].gameObject.SetActive(false);
                 }
             }
         }
@@ -175,22 +176,36 @@ namespace RuleForge.Weapons
                 tracers[index] = tracer;
             }
 
-            flashes = new GameObject[FlashPoolSize];
+            flashes = new ParticleSystem[FlashPoolSize];
             flashExpiry = new float[FlashPoolSize];
             for (int index = 0; index < flashes.Length; index++)
             {
-                GameObject flash = GameObject.CreatePrimitive(
-                    PrimitiveType.Sphere);
+                GameObject flash = new GameObject("Flash_" + index);
                 flash.name = "Flash_" + index;
                 flash.transform.SetParent(effectRoot, false);
-                Collider collider = flash.GetComponent<Collider>();
-                if (collider != null)
+                ParticleSystem particles = flash.AddComponent<ParticleSystem>();
+                ParticleSystem.MainModule main = particles.main;
+                main.loop = false;
+                main.playOnAwake = false;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.startLifetime = flashLifetime;
+                main.startSpeed = 0.7f;
+                main.startSize = 0.08f;
+                main.maxParticles = 12;
+                ParticleSystem.EmissionModule emission = particles.emission;
+                emission.rateOverTime = 0f;
+                emission.SetBursts(new[]
                 {
-                    Destroy(collider);
-                }
-
+                    new ParticleSystem.Burst(0f, 7)
+                });
+                ParticleSystem.ShapeModule shape = particles.shape;
+                shape.shapeType = ParticleSystemShapeType.Sphere;
+                shape.radius = 0.025f;
+                ParticleSystemRenderer particleRenderer =
+                    particles.GetComponent<ParticleSystemRenderer>();
+                particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
                 flash.SetActive(false);
-                flashes[index] = flash;
+                flashes[index] = particles;
             }
         }
 
@@ -212,17 +227,19 @@ namespace RuleForge.Weapons
             Material material)
         {
             int index = FindFreeFlash();
-            GameObject flash = flashes[index];
+            ParticleSystem flash = flashes[index];
             flash.transform.position = position;
-            flash.transform.localScale = Vector3.one * size;
-            Renderer renderer = flash.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.sharedMaterial = material;
-            }
+            ParticleSystem.MainModule main = flash.main;
+            main.startSize = new ParticleSystem.MinMaxCurve(
+                size * 0.45f,
+                size * 1.15f);
+            ParticleSystemRenderer renderer =
+                flash.GetComponent<ParticleSystemRenderer>();
+            renderer.sharedMaterial = material;
 
             flashExpiry[index] = Time.time + flashLifetime;
-            flash.SetActive(true);
+            flash.gameObject.SetActive(true);
+            flash.Play(true);
         }
 
         private int FindFreeTracer()
@@ -249,7 +266,7 @@ namespace RuleForge.Weapons
             int oldestIndex = 0;
             for (int index = 0; index < flashes.Length; index++)
             {
-                if (!flashes[index].activeSelf)
+                if (!flashes[index].gameObject.activeSelf)
                 {
                     return index;
                 }

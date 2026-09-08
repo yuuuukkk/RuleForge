@@ -1,4 +1,5 @@
 using RuleForge.Player;
+using RuleForge.Config;
 using RuleForge.Runtime;
 using UnityEngine;
 
@@ -16,6 +17,11 @@ namespace RuleForge.Enemies
         private float nextAttackTime;
         private bool attackPending;
         private float attackHitsAt;
+        private bool dashWindupPending;
+        private bool dashActive;
+        private float dashStateEndsAt;
+        private float nextDashTime;
+        private Vector3 dashDirection;
 
         [Header("Attack Readability")]
         [SerializeField, Min(0.05f)] private float attackWindupDuration = 0.45f;
@@ -36,6 +42,7 @@ namespace RuleForge.Enemies
             if (!TryAcquireTarget())
             {
                 CancelPendingAttack();
+                CancelDash();
                 characterController.SimpleMove(Vector3.zero);
                 return;
             }
@@ -53,6 +60,11 @@ namespace RuleForge.Enemies
                     transform.rotation,
                     desiredRotation,
                     turnSpeed * Time.deltaTime);
+            }
+
+            if (HandleDash(distance, direction))
+            {
+                return;
             }
 
             if (distance > runtimeStats.StoppingDistanceStat.FinalValue)
@@ -134,8 +146,94 @@ namespace RuleForge.Enemies
             }
 
             attackPending = true;
-            attackHitsAt = Time.time + attackWindupDuration;
-            attackVisual?.BeginWindup(attackWindupDuration);
+            float windup = attackWindupDuration * GetAttackWindupMultiplier();
+            attackHitsAt = Time.time + windup;
+            attackVisual?.BeginWindup(windup);
+        }
+
+        private bool HandleDash(float distance, Vector3 direction)
+        {
+            EnemyConfig config = runtimeStats != null
+                ? runtimeStats.Config
+                : null;
+            if (config == null ||
+                config.CombatStyle != EnemyCombatStyle.Dasher)
+            {
+                CancelDash();
+                return false;
+            }
+
+            if (dashWindupPending)
+            {
+                characterController.SimpleMove(Vector3.zero);
+                if (Time.time < dashStateEndsAt)
+                {
+                    return true;
+                }
+
+                dashWindupPending = false;
+                dashActive = true;
+                dashStateEndsAt = Time.time + config.DashDuration;
+                dashDirection = direction.sqrMagnitude > 0f
+                    ? direction
+                    : transform.forward;
+            }
+
+            if (dashActive)
+            {
+                if (Time.time < dashStateEndsAt)
+                {
+                    characterController.SimpleMove(
+                        dashDirection *
+                        runtimeStats.MoveSpeedStat.FinalValue *
+                        config.DashSpeedMultiplier);
+                    return true;
+                }
+
+                dashActive = false;
+                nextDashTime = Time.time + config.DashCooldown;
+            }
+
+            float minimumDashDistance =
+                runtimeStats.StoppingDistanceStat.FinalValue * 1.8f;
+            if (Time.time < nextDashTime ||
+                distance <= minimumDashDistance ||
+                distance > 11f ||
+                direction.sqrMagnitude <= 0f)
+            {
+                return false;
+            }
+
+            CancelPendingAttack();
+            dashWindupPending = true;
+            dashStateEndsAt = Time.time + config.DashWindup;
+            dashDirection = direction;
+            characterController.SimpleMove(Vector3.zero);
+            attackVisual?.BeginWindup(config.DashWindup);
+            return true;
+        }
+
+        private float GetAttackWindupMultiplier()
+        {
+            EnemyConfig config = runtimeStats != null
+                ? runtimeStats.Config
+                : null;
+            return config != null
+                ? config.AttackWindupMultiplier
+                : 1f;
+        }
+
+        private void CancelDash()
+        {
+            if (!dashWindupPending && !dashActive)
+            {
+                return;
+            }
+
+            dashWindupPending = false;
+            dashActive = false;
+            dashStateEndsAt = 0f;
+            attackVisual?.Cancel();
         }
 
         private void CancelPendingAttack()

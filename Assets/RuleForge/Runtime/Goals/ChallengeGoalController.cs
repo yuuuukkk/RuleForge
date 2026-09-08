@@ -38,6 +38,28 @@ namespace RuleForge.Runtime.Goals
         public int KillCount => killCount;
         public int Score => score;
         public ChallengeGoalState State => state;
+        public float ProgressNormalized
+        {
+            get
+            {
+                if (goalTarget <= 0f)
+                {
+                    return 0f;
+                }
+
+                switch (goalType)
+                {
+                    case ChallengeGoalType.Survive:
+                        return Mathf.Clamp01(survivedSeconds / goalTarget);
+                    case ChallengeGoalType.KillCount:
+                        return Mathf.Clamp01(killCount / goalTarget);
+                    case ChallengeGoalType.Score:
+                        return Mathf.Clamp01(score / goalTarget);
+                    default:
+                        return 0f;
+                }
+            }
+        }
         public float PlayerCurrentHealth => playerHealth != null
             ? playerHealth.CurrentHealth
             : 0f;

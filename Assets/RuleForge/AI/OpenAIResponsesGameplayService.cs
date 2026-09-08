@@ -23,28 +23,83 @@ namespace RuleForge.AI
         public bool IsBenchmarkEligible => true;
         public bool IsConfigured => TryResolveAuthorization(out _, out _);
 
-        public IEnumerator GenerateChallenge(
-            AIChallengeGenerationRequest request,
-            Action<AIGameplayResult<ChallengeSpec>> onComplete)
+        public IEnumerator AnalyzeGameplay(
+            AIProposalAnalysisRequest request,
+            Action<AIGameplayResult<GameplayProposal>> onComplete)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.UserPrompt))
             {
-                onComplete?.Invoke(AIGameplayResult<ChallengeSpec>.Failed(
-                    "A generation prompt is required."));
+                onComplete?.Invoke(AIGameplayResult<GameplayProposal>.Failed(
+                    "A gameplay idea is required."));
                 yield break;
             }
 
             string instructions =
-                "You are the gameplay designer for RuleForge. Generate one " +
-                "RuleForge ChallengeSpec JSON object only. Use only the " +
-                "provided gameplay vocabulary and exact effect mappings. Do not " +
-                "invent events, effects, weapons, operations, or runtime code. " +
-                "Treat explicit numbers and ratios as requirements when they fit " +
-                "the supplied limits. Choose mechanics that express the player's " +
-                "intent; do not reuse a familiar rule combination merely because " +
-                "it is valid. Return no prose and no markdown.";
+                "Act as RuleForge's Interpreter, Gameplay Designer, and light " +
+                "Gameplay Critic. Assess whether goal, trigger, reward, risk, " +
+                "scaling, and limit are explicit. Prefer a concrete, playable " +
+                "proposal over asking questions: infer sensible missing details " +
+                "and explain them briefly. Ask one clarification only when the " +
+                "ambiguity would produce materially different designs. Identify " +
+                "conflicts and unsupported requests. Warn about one-sided rewards, " +
+                "runaway growth, or missing loops, but preserve the player's final " +
+                "choice, including deliberately extreme designs. Use only the " +
+                "provided vocabulary. A numeric request beyond safe limits should " +
+                "remain visible in the proposal with a warning and canGenerate true " +
+                "so the real Validator, not this analysis, makes the ruling. " +
+                "If the core mechanic requires a primitive outside the supplied " +
+                "vocabulary, set withinVocabulary and canGenerate false and offer " +
+                "the nearest supported design or one focused clarification. " +
+                "Suggestions are natural-language intentions, " +
+                "never executable values or UI shortcuts. Return player-facing " +
+                "structured JSON only; do not reveal hidden chain-of-thought.";
+            string input =
+                "ORIGINAL PLAYER IDEA:\n" + request.UserPrompt +
+                "\n\nCURRENT PROPOSAL JSON (may be empty):\n" +
+                (request.CurrentProposal != null
+                    ? JsonUtility.ToJson(request.CurrentProposal, true)
+                    : "none") +
+                "\n\nPLAYER REFINEMENT (may be empty):\n" +
+                request.RefinementIntent +
+                "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nDESIGN GUIDANCE:\n" + GameplayVocabulary.BuildDesignGuidance() +
+                "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
+            AIGameplayResult<string> response = null;
+            yield return SendStructuredRequest(
+                instructions,
+                input,
+                "ruleforge_gameplay_proposal",
+                request.OutputSchema,
+                result => response = result);
+
+            onComplete?.Invoke(ParseStructured<GameplayProposal>(response));
+        }
+
+        public IEnumerator GenerateChallenge(
+            AIChallengeGenerationRequest request,
+            Action<AIGameplayResult<ChallengeSpec>> onComplete)
+        {
+            if (request == null ||
+                request.ConfirmedProposal == null ||
+                string.IsNullOrWhiteSpace(request.UserPrompt))
+            {
+                onComplete?.Invoke(AIGameplayResult<ChallengeSpec>.Failed(
+                    "A confirmed gameplay proposal is required."));
+                yield break;
+            }
+
+            string instructions =
+                "Convert the player-confirmed GameplayProposal into exactly one " +
+                "RuleForge ChallengeSpec JSON object. The proposal, not a guessed " +
+                "template, is the source of truth. Use only the supplied gameplay " +
+                "vocabulary and exact effect mappings. Do not invent runtime code. " +
+                "Preserve explicit numbers and ratios exactly, even when they may " +
+                "exceed a limit; the real Validator and Repairer own that decision. " +
+                "Return no prose and no markdown.";
             string input =
                 "USER PROMPT:\n" + request.UserPrompt +
+                "\n\nCONFIRMED GAMEPLAY PROPOSAL JSON:\n" +
+                JsonUtility.ToJson(request.ConfirmedProposal, true) +
                 "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
                 "\n\nDESIGN GUIDANCE:\n" +
                 GameplayVocabulary.BuildDesignGuidance() +
@@ -58,6 +113,48 @@ namespace RuleForge.AI
                 result => response = result);
 
             onComplete?.Invoke(ParseStructured<ChallengeSpec>(response));
+        }
+
+        public IEnumerator AnalyzeModification(
+            AIModificationProposalRequest request,
+            Action<AIGameplayResult<GameplayModificationProposal>> onComplete)
+        {
+            if (request == null || request.CurrentChallenge == null ||
+                string.IsNullOrWhiteSpace(request.UserPrompt))
+            {
+                onComplete?.Invoke(
+                    AIGameplayResult<GameplayModificationProposal>.Failed(
+                        "A current challenge and player feedback are required."));
+                yield break;
+            }
+
+            string instructions =
+                "Act as RuleForge's Modifier and Gameplay Critic. Interpret both " +
+                "precise edits and experiential feedback such as 'late game is too " +
+                "wild' against the real current challenge. Identify the smallest " +
+                "relevant parameter change and explain it before any patch exists. " +
+                "If a reference is genuinely ambiguous between multiple current " +
+                "rules, ask one focused clarification and set canModify false. " +
+                "Never silently change unrelated rules. patchInstruction must be a " +
+                "complete natural-language instruction for a later patch request, " +
+                "not JSON. Return concise player-facing JSON only.";
+            string input =
+                "PLAYER FEEDBACK:\n" + request.UserPrompt +
+                "\n\nCURRENT CHALLENGE JSON:\n" +
+                JsonUtility.ToJson(request.CurrentChallenge, true) +
+                "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nDESIGN GUIDANCE:\n" + GameplayVocabulary.BuildDesignGuidance() +
+                "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
+            AIGameplayResult<string> response = null;
+            yield return SendStructuredRequest(
+                instructions,
+                input,
+                "ruleforge_modification_proposal",
+                request.OutputSchema,
+                result => response = result);
+
+            onComplete?.Invoke(
+                ParseStructured<GameplayModificationProposal>(response));
         }
 
         public IEnumerator ModifyChallenge(
@@ -80,7 +177,8 @@ namespace RuleForge.AI
                 "the player did not request unchanged. Prefer a granular Modify " +
                 "operation over RemoveRule/AddRule. Use multiple operations only " +
                 "when the request explicitly requires multiple changes. Treat " +
-                "numbers and ratios as requirements within supplied limits. Use " +
+                "numbers and ratios exactly as requested; do not silently clamp " +
+                "them because the real Validator and Repairer own limits. Use " +
                 "only supplied operations and vocabulary. For unused operation " +
                 "fields, return empty strings, zero values, and null objects. " +
                 "ModifyGoal must include goal and goalTarget. AddRule must contain " +
@@ -101,6 +199,132 @@ namespace RuleForge.AI
                 instructions,
                 input,
                 "ruleforge_challenge_patch",
+                request.OutputSchema,
+                result => response = result);
+
+            onComplete?.Invoke(ParseStructured<ChallengePatch>(response));
+        }
+
+        public IEnumerator RepairChallenge(
+            AIChallengeRepairRequest request,
+            Action<AIGameplayResult<GameplayRepairResult>> onComplete)
+        {
+            if (request == null || request.InvalidChallenge == null ||
+                string.IsNullOrWhiteSpace(request.ValidationContext))
+            {
+                onComplete?.Invoke(AIGameplayResult<GameplayRepairResult>.Failed(
+                    "An invalid challenge and real validation context are required."));
+                yield break;
+            }
+
+            string instructions =
+                "Act as RuleForge's Repairer. Repair the invalid ChallengeSpec using " +
+                "the exact Validator errors and warnings supplied. The Validator is " +
+                "the final authority: never bypass it or reinterpret its limits. " +
+                "Preserve the confirmed player intent and every unrelated field. " +
+                "For modifications, compare against the previous challenge and keep " +
+                "the repair minimal. Balance context may guide an explanation but " +
+                "must not force balance on an intentionally extreme legal design. " +
+                "Return a repaired full ChallengeSpec plus concise player-facing " +
+                "changes. Do not reveal hidden reasoning or return markdown.";
+            string input =
+                "PLAYER REQUEST:\n" + request.OriginalPrompt +
+                "\n\nCONFIRMED PROPOSAL JSON (may be none):\n" +
+                (request.ConfirmedProposal != null
+                    ? JsonUtility.ToJson(request.ConfirmedProposal, true)
+                    : "none") +
+                "\n\nINVALID CHALLENGE JSON:\n" +
+                JsonUtility.ToJson(request.InvalidChallenge, true) +
+                "\n\nPREVIOUS CHALLENGE JSON (may be none):\n" +
+                (request.PreviousChallenge != null
+                    ? JsonUtility.ToJson(request.PreviousChallenge, true)
+                    : "none") +
+                "\n\nREAL VALIDATOR RESULT:\n" + request.ValidationContext +
+                "\n\nREAL BALANCE RESULT:\n" + request.BalanceContext +
+                "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
+            AIGameplayResult<string> response = null;
+            yield return SendStructuredRequest(
+                instructions,
+                input,
+                "ruleforge_challenge_repair",
+                request.OutputSchema,
+                result => response = result);
+
+            onComplete?.Invoke(ParseStructured<GameplayRepairResult>(response));
+        }
+
+        public IEnumerator AnalyzeImprovements(
+            AIImprovementAnalysisRequest request,
+            Action<AIGameplayResult<GameplayImprovementSet>> onComplete)
+        {
+            if (request == null || request.CurrentChallenge == null)
+            {
+                onComplete?.Invoke(AIGameplayResult<GameplayImprovementSet>.Failed(
+                    "A current challenge is required."));
+                yield break;
+            }
+
+            string instructions =
+                "Act as RuleForge's Gameplay Critic. Analyze the real current " +
+                "ChallengeSpec and provide at most three materially distinct, " +
+                "optional improvements. Look for missing risk/reward tension, " +
+                "resource pressure, scaling shape, useful randomness, or a clearer " +
+                "gameplay loop. Do not assume every challenge needs balancing, and " +
+                "do not rewrite its core identity. Each intent must be a complete " +
+                "natural-language request suitable for the existing Modifier; it " +
+                "must not be JSON or executable UI logic. Use only the supplied " +
+                "vocabulary. Return concise player-facing JSON only.";
+            string input =
+                "CURRENT CHALLENGE JSON:\n" +
+                JsonUtility.ToJson(request.CurrentChallenge, true) +
+                "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nDESIGN GUIDANCE:\n" + GameplayVocabulary.BuildDesignGuidance() +
+                "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
+            AIGameplayResult<string> response = null;
+            yield return SendStructuredRequest(
+                instructions,
+                input,
+                "ruleforge_improvement_suggestions",
+                request.OutputSchema,
+                result => response = result);
+
+            onComplete?.Invoke(ParseStructured<GameplayImprovementSet>(response));
+        }
+
+        public IEnumerator RepairPatch(
+            AIChallengePatchRepairRequest request,
+            Action<AIGameplayResult<ChallengePatch>> onComplete)
+        {
+            if (request == null || request.CurrentChallenge == null ||
+                request.RejectedPatch == null ||
+                string.IsNullOrWhiteSpace(request.PatchError))
+            {
+                onComplete?.Invoke(AIGameplayResult<ChallengePatch>.Failed(
+                    "A rejected patch and its real application error are required."));
+                yield break;
+            }
+
+            string instructions =
+                "Act as RuleForge's Patch Repairer. Return one corrected " +
+                "ChallengePatch JSON object using the exact patch application " +
+                "error supplied. Preserve the player's requested smallest change. " +
+                "Do not add unrelated operations, replace the whole challenge, or " +
+                "bypass the patch applier. Use only supplied operations and " +
+                "vocabulary. Return no prose and no markdown.";
+            string input =
+                "PLAYER MODIFICATION:\n" + request.OriginalPrompt +
+                "\n\nCURRENT CHALLENGE JSON:\n" +
+                JsonUtility.ToJson(request.CurrentChallenge, true) +
+                "\n\nREJECTED PATCH JSON:\n" +
+                JsonUtility.ToJson(request.RejectedPatch, true) +
+                "\n\nREAL PATCH APPLICATION ERROR:\n" + request.PatchError +
+                "\n\nCREATOR PREFERENCES:\n" + request.CreatorPreferences +
+                "\n\nGAMEPLAY VOCABULARY:\n" + request.GameplayVocabulary;
+            AIGameplayResult<string> response = null;
+            yield return SendStructuredRequest(
+                instructions,
+                input,
+                "ruleforge_repaired_challenge_patch",
                 request.OutputSchema,
                 result => response = result);
 

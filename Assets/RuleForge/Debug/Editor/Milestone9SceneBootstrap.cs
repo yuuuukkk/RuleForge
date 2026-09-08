@@ -155,6 +155,15 @@ namespace RuleForge.Editor
             tank.ConfigureProfile(
                 "Tank", 150f, 1.7f, 1.8f, 7f, 20f, 0.65f,
                 3, 3f, new Color(0.25f, 0.8f, 0.35f), 1.35f);
+            grunt.ConfigureBehavior(EnemyCombatStyle.Pursuer, 1f);
+            runner.ConfigureBehavior(
+                EnemyCombatStyle.Dasher,
+                0.65f,
+                2.2f,
+                0.35f,
+                0.32f,
+                2.8f);
+            tank.ConfigureBehavior(EnemyCombatStyle.Bruiser, 1.8f);
 
             EditorUtility.SetDirty(assault);
             EditorUtility.SetDirty(shotgun);

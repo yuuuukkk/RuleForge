@@ -20,7 +20,8 @@ namespace RuleForge.Tests
         {
             balanceConfig = ScriptableObject.CreateInstance<GameplayBalanceConfig>();
             balanceConfig.ConfigureComplexityLimits(6, 4, 3, 20);
-            balanceConfig.EnsureEffectValueLimit("PlayerDamage", 0f, 1.5f);
+            balanceConfig.EnsureEffectValueLimit(
+                "PlayerDamage", 0f, 1.5f, 1.5f);
 
             effectCatalog = ScriptableObject.CreateInstance<EffectCatalog>();
             effectCatalog.EnsureDefinition(
@@ -163,6 +164,40 @@ namespace RuleForge.Tests
 
             Assert.That(evaluation.Growth, Is.Not.EqualTo(GrowthSpeed.None));
             Assert.That(evaluation.GameplayTags, Does.Contain("Snowball"));
+        }
+
+        [Test]
+        public void Validate_RejectsUnsafeFullyStackedMagnitude()
+        {
+            string rule = BuildRuleJson("unsafe_stack", 0.2f)
+                .Replace(
+                    "\"stackMode\":\"None\",\"maxStacks\":1",
+                    "\"stackMode\":\"Stack\",\"maxStacks\":10");
+            ChallengeSpec challenge = JsonUtility.FromJson<ChallengeSpec>(
+                BuildChallengeJson(rule));
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(
+                result.Errors.Any(error => error.Contains("safe total")),
+                Is.True);
+        }
+
+        [Test]
+        public void Validate_WarnsWhenStackedMagnitudeApproachesLimit()
+        {
+            string rule = BuildRuleJson("high_stack", 0.12f)
+                .Replace(
+                    "\"stackMode\":\"None\",\"maxStacks\":1",
+                    "\"stackMode\":\"Stack\",\"maxStacks\":10");
+            ChallengeSpec challenge = JsonUtility.FromJson<ChallengeSpec>(
+                BuildChallengeJson(rule));
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.IsValid, Is.True, result.BuildSummary());
+            Assert.That(result.Warnings.Count, Is.GreaterThan(0));
         }
 
         private static string BuildChallengeJson(string rules)

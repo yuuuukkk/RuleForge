@@ -28,26 +28,58 @@ MonoBehaviour:
   - effectId: PlayerDamage
     minimumValue: 0
     maximumValue: 1.5
+    maximumStackedMagnitude: 1.5
   - effectId: EnemyMoveSpeed
     minimumValue: 0.05
     maximumValue: 1.5
+    maximumStackedMagnitude: 1
   - effectId: PlayerDamageFromMissingHealth
     minimumValue: 0
     maximumValue: 1.5
+    maximumStackedMagnitude: 0
   - effectId: SpawnRunner
     minimumValue: 0
     maximumValue: 0
+    maximumStackedMagnitude: 0
   - effectId: GiveAmmo
     minimumValue: 1
     maximumValue: 100
+    maximumStackedMagnitude: 0
   - effectId: SpawnGrunt
     minimumValue: 0
     maximumValue: 0
+    maximumStackedMagnitude: 0
   - effectId: SpawnTank
     minimumValue: 0
     maximumValue: 0
+    maximumStackedMagnitude: 0
   - effectId: PlayerMoveSpeedFromMissingHealth
     minimumValue: -0.75
     maximumValue: 0
+    maximumStackedMagnitude: 0
+  - effectId: PlayerMoveSpeed
+    minimumValue: 0.03
+    maximumValue: 0.35
+    maximumStackedMagnitude: 0.75
+  - effectId: EnemyDamage
+    minimumValue: 0.05
+    maximumValue: 0.75
+    maximumStackedMagnitude: 1.5
+  - effectId: EnemyHealth
+    minimumValue: 0.05
+    maximumValue: 1
+    maximumStackedMagnitude: 2
+  - effectId: EnemyAttackSpeed
+    minimumValue: 0.05
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
+  - effectId: WeaponFireRate
+    minimumValue: 0.03
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
+  - effectId: WeaponReloadSpeed
+    minimumValue: -0.5
+    maximumValue: -0.03
+    maximumStackedMagnitude: 0.7
   balancedRatioMinimum: 0.75
   balancedRatioMaximum: 1.25

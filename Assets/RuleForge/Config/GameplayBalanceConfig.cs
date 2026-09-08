@@ -10,6 +10,7 @@ namespace RuleForge.Config
         [SerializeField] private string effectId;
         [SerializeField] private float minimumValue;
         [SerializeField] private float maximumValue = 1f;
+        [SerializeField, Min(0f)] private float maximumStackedMagnitude;
 
         public EffectValueLimit(
             string id,
@@ -24,11 +25,21 @@ namespace RuleForge.Config
         public string EffectId => effectId;
         public float MinimumValue => minimumValue;
         public float MaximumValue => maximumValue;
+        public float MaximumStackedMagnitude => maximumStackedMagnitude;
 
         public void Configure(float minimum, float maximum)
         {
             minimumValue = minimum;
             maximumValue = Mathf.Max(minimum, maximum);
+        }
+
+        public void Configure(
+            float minimum,
+            float maximum,
+            float stackedMagnitude)
+        {
+            Configure(minimum, maximum);
+            maximumStackedMagnitude = Mathf.Max(0f, stackedMagnitude);
         }
     }
 
@@ -153,6 +164,28 @@ namespace RuleForge.Config
 
             effectValueLimits.Add(
                 new EffectValueLimit(effectId, minimum, maximum));
+        }
+
+        public void EnsureEffectValueLimit(
+            string effectId,
+            float minimum,
+            float maximum,
+            float maximumStackedMagnitude)
+        {
+            EnsureEffectValueLimitList();
+            if (TryGetEffectValueLimit(effectId, out EffectValueLimit existing))
+            {
+                existing.Configure(
+                    minimum,
+                    maximum,
+                    maximumStackedMagnitude);
+                return;
+            }
+
+            EffectValueLimit limit =
+                new EffectValueLimit(effectId, minimum, maximum);
+            limit.Configure(minimum, maximum, maximumStackedMagnitude);
+            effectValueLimits.Add(limit);
         }
 
         private void OnValidate()

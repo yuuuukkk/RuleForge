@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using RuleForge.DSL;
+using RuleForge.Enemies;
 using RuleForge.Rules;
 using RuleForge.Player;
 using RuleForge.Runtime.Goals;
@@ -19,6 +20,7 @@ namespace RuleForge.UI
         [SerializeField] private WeaponLoadout weaponLoadout;
         [SerializeField] private WeaponController weaponController;
         [SerializeField] private PlayerHealth playerHealth;
+        [SerializeField] private EnemySpawner enemySpawner;
         [SerializeField] private ChallengeCreatorPanel creatorPanel;
         [SerializeField, Min(0.5f)] private float feedbackDuration = 2.5f;
         [SerializeField, Min(0.05f)] private float damageFlashDuration = 0.2f;
@@ -970,6 +972,19 @@ namespace RuleForge.UI
             }
 
             List<string> stateLines = new List<string>();
+            if (enemySpawner != null)
+            {
+                string phase = enemySpawner.IsPreparing
+                    ? "准备阶段"
+                    : enemySpawner.PressureTier <= 0
+                        ? "基础交战"
+                        : enemySpawner.PressureTier == 1
+                            ? "压力上升"
+                            : "最终攻势";
+                stateLines.Add(
+                    $"战斗阶段：{phase}   " +
+                    $"进度 {enemySpawner.ChallengeProgress * 100f:0}%");
+            }
             IReadOnlyList<RuleExecutionDebugState> states =
                 ruleEngine.ExecutionStates;
             for (int index = 0; index < states.Count; index++)
@@ -996,10 +1011,18 @@ namespace RuleForge.UI
                         state.EffectId,
                         out RuleForge.Config.EffectDefinition definition))
                 {
+                    string polarity = definition.Polarity ==
+                                      RuleForge.Config.EffectPolarity.Reward
+                        ? "收益"
+                        : definition.Polarity ==
+                          RuleForge.Config.EffectPolarity.Penalty
+                            ? "风险"
+                            : "状态";
                     displayName = RuleForgeLocalization.EffectName(
                         definition.EffectId,
                         definition.DisplayName,
                         RuleForgeLanguage.Chinese);
+                    displayName = polarity + " · " + displayName;
                 }
 
                 string line = displayName + " " +
@@ -1016,11 +1039,6 @@ namespace RuleForge.UI
                 {
                     break;
                 }
-            }
-
-            if (stateLines.Count == 0)
-            {
-                return;
             }
 
             if (weaponController != null)
@@ -1333,6 +1351,9 @@ namespace RuleForge.UI
             creatorPanel = creatorPanel != null
                 ? creatorPanel
                 : FindObjectOfType<ChallengeCreatorPanel>();
+            enemySpawner = enemySpawner != null
+                ? enemySpawner
+                : FindObjectOfType<EnemySpawner>();
         }
 
         private void EnsureStyles()

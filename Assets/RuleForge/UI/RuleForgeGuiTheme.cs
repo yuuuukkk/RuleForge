@@ -124,6 +124,10 @@ namespace RuleForge.UI
             skin.button.hover.textColor = Color.white;
             skin.button.active.textColor = Color.white;
             skin.button.padding = new RectOffset(12, 12, 7, 7);
+            // The Kenney asset used here is a sci-fi card with its colored
+            // action area in the upper half. Align copy inside that action
+            // area instead of leaving it on the white decorative divider.
+            skin.button.contentOffset = new Vector2(0f, -7f);
         }
 
         private static void ApplyInputs(GUISkin skin)

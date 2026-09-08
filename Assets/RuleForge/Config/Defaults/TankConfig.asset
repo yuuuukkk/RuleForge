@@ -21,5 +21,11 @@ MonoBehaviour:
   turnSpeed: 7
   contactDamage: 20
   attacksPerSecond: 0.65
+  combatStyle: 2
+  attackWindupMultiplier: 1.8
+  dashSpeedMultiplier: 2.2
+  dashWindup: 0.35
+  dashDuration: 0.32
+  dashCooldown: 2.8
   desiredAliveEnemies: 3
   respawnDelay: 3

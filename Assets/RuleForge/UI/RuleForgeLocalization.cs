@@ -136,6 +136,12 @@ namespace RuleForge.UI
                 case "SpawnGrunt": return "生成普通敌人";
                 case "SpawnTank": return "生成重型敌人";
                 case "GiveAmmo": return "补充弹药";
+                case "PlayerMoveSpeed": return "玩家移动速度";
+                case "EnemyDamage": return "敌人攻击伤害";
+                case "EnemyHealth": return "敌人生命上限";
+                case "EnemyAttackSpeed": return "敌人攻击速度";
+                case "WeaponFireRate": return "武器射速";
+                case "WeaponReloadSpeed": return "武器换弹时间";
                 default: return fallback ?? effectId ?? string.Empty;
             }
         }
@@ -178,6 +184,12 @@ namespace RuleForge.UI
             {
                 builder.AppendLine();
                 builder.Append(ValidationMessage(validation.Errors[index]));
+            }
+            for (int index = 0; index < validation.Warnings.Count; index++)
+            {
+                builder.AppendLine();
+                builder.Append(T("Warning: ", "警告："));
+                builder.Append(ValidationMessage(validation.Warnings[index]));
             }
 
             return builder.ToString();

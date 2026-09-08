@@ -44,9 +44,20 @@ namespace RuleForge.UI
         private string apiKeyDraft = string.Empty;
         private bool rememberApiKeyOnThisComputer;
         private string apiKeyStatus = string.Empty;
+        private GameplayProposal gameplayProposal;
+        private string gameplayProposalPrompt = string.Empty;
+        private string proposalRefinement = string.Empty;
+        private GameplayModificationProposal modificationProposal;
+        private string modificationProposalPrompt = string.Empty;
+        private string modificationRequestSignature = string.Empty;
+        private string improvementRequestSignature = string.Empty;
+        private string patchRequestSignature = string.Empty;
+        private GameplayImprovementSet improvementSet;
+        private AIChallengePreview pendingGenerationRepair;
         private bool showAdvancedEdit;
         private bool showDeveloperView;
         private ChallengeSpec pendingModification;
+        private AIChallengePreview pendingModificationPreview;
         private ChallengeSpec modificationBase;
         private readonly List<string> pendingModificationDiff =
             new List<string>();
@@ -338,6 +349,9 @@ namespace RuleForge.UI
                 return;
             }
 
+            improvementSet = null;
+            modificationProposal = null;
+            modificationProposalPrompt = string.Empty;
             ruleDrafts.Clear();
             openDropdownId = string.Empty;
             nextRuleNumber = 1;
@@ -388,11 +402,17 @@ namespace RuleForge.UI
                 GUILayout.Space(12f);
                 DrawHumanReadableSummary();
                 DrawPrimaryPlayButton();
+                DrawImproveWithAI();
                 DrawModificationFlow();
             }
 
             GUILayout.Space(10f);
-            GUI.enabled = pendingModification == null;
+            bool hasPendingAIReview = pendingModification != null ||
+                                      modificationProposal != null ||
+                                      improvementSet != null ||
+                                      pendingGenerationRepair != null ||
+                                      (aiController != null && aiController.IsBusy);
+            GUI.enabled = !hasPendingAIReview;
             showAdvancedEdit = GUILayout.Toggle(
                 showAdvancedEdit,
                 RuleForgeLocalization.T(
@@ -401,15 +421,15 @@ namespace RuleForge.UI
                 GUI.skin.button,
                 GUILayout.Height(30f));
             GUI.enabled = true;
-            if (showAdvancedEdit && pendingModification == null)
+            if (showAdvancedEdit && !hasPendingAIReview)
             {
                 DrawAdvancedEditor();
             }
             else if (showAdvancedEdit)
             {
                 GUILayout.Label(RuleForgeLocalization.T(
-                    "Apply or cancel the proposed AI changes before manual editing.",
-                    "请先应用或取消 AI 建议修改，再进行手动编辑。"));
+                    "Close, apply, or cancel the current AI review before manual editing.",
+                    "请先收起、应用或取消当前 AI 建议，再进行手动编辑。"));
             }
 
             showDeveloperView = GUILayout.Toggle(
@@ -463,16 +483,21 @@ namespace RuleForge.UI
                                !string.IsNullOrWhiteSpace(creationPrompt);
             GUI.enabled = canGenerate;
             if (GUILayout.Button(RuleForgeLocalization.T(
-                    "GENERATE CHALLENGE",
-                    "生成玩法"), GUILayout.Height(48f)))
+                    "ASK AI GAMEPLAY DESIGNER",
+                    "让 AI 策划分析"), GUILayout.Height(48f)))
             {
                 ClearPendingModification();
+                gameplayProposal = null;
+                pendingGenerationRepair = null;
+                gameplayProposalPrompt = creationPrompt;
                 statusMessage = RuleForgeLocalization.T(
-                    "AI is converting your description into a ChallengeSpec...",
-                    "AI 正在把你的描述转换成玩法……");
-                aiController.GenerateChallenge(
+                    "AI is understanding, completing, and critiquing your idea...",
+                    "AI 正在理解、补全并检查你的玩法想法……");
+                aiController.AnalyzeGameplay(
                     creationPrompt,
-                    HandleAIGenerationPreview);
+                    null,
+                    string.Empty,
+                    HandleGameplayProposal);
             }
 
             GUI.enabled = true;
@@ -482,6 +507,149 @@ namespace RuleForge.UI
                     "Real AI is not active and configured. Open Developer View to inspect or switch the provider; no mock result will be shown as AI output.",
                     "真实 AI 尚未启用并配置。可在“开发者视图”检查或切换 Provider；界面不会用模拟结果冒充 AI 输出。"),
                     GUI.skin.box);
+            }
+
+            DrawGameplayProposal();
+            DrawGenerationRepair();
+        }
+
+        private void DrawGameplayProposal()
+        {
+            if (gameplayProposal == null)
+            {
+                return;
+            }
+
+            GUILayout.Space(10f);
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T("USER", "玩家"));
+            GUILayout.Label(gameplayProposalPrompt, GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "AI GAMEPLAY DESIGNER", "AI 游戏策划"), GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T("Confidence: ", "理解信心：") +
+                gameplayProposal.Confidence);
+            GUILayout.Label(gameplayProposal.Summary);
+            if (!string.IsNullOrWhiteSpace(gameplayProposal.SuggestedGoal))
+            {
+                GUILayout.Label(RuleForgeLocalization.T("Goal: ", "目标：") +
+                    gameplayProposal.SuggestedGoal);
+            }
+            DrawStringList(gameplayProposal.SuggestedRules);
+            if (!string.IsNullOrWhiteSpace(
+                    gameplayProposal.DesignReasoningSummary))
+            {
+                GUILayout.Label(RuleForgeLocalization.T(
+                    "Design note: ", "设计说明：") +
+                    gameplayProposal.DesignReasoningSummary);
+            }
+            DrawStringList(gameplayProposal.Warnings);
+
+            if (!string.IsNullOrWhiteSpace(
+                    gameplayProposal.ClarificationQuestion))
+            {
+                GUILayout.Label(gameplayProposal.ClarificationQuestion,
+                    GUI.skin.box);
+            }
+
+            proposalRefinement = GUILayout.TextField(
+                proposalRefinement ?? string.Empty);
+            GUI.enabled = !aiController.IsBusy &&
+                          !string.IsNullOrWhiteSpace(proposalRefinement);
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "SEND TO DESIGNER", "发送给 AI 策划")))
+            {
+                RefineGameplayProposal(proposalRefinement);
+            }
+            GUI.enabled = true;
+
+            if (gameplayProposal.CanGenerate)
+            {
+                GUI.enabled = !aiController.IsBusy;
+                if (GUILayout.Button(RuleForgeLocalization.T(
+                        "GENERATE THIS", "按这个方案生成"),
+                        GUILayout.Height(42f)))
+                {
+                    pendingGenerationRepair = null;
+                    statusMessage = RuleForgeLocalization.T(
+                        "Generating the confirmed proposal...",
+                        "正在根据已确认的策划方案生成玩法……");
+                    aiController.GenerateChallenge(
+                        gameplayProposalPrompt,
+                        gameplayProposal,
+                        HandleAIGenerationPreview);
+                }
+                GUI.enabled = true;
+
+                GUILayout.BeginHorizontal();
+                DrawProposalIntentButton(
+                    RuleForgeLocalization.T("Make It Crazier", "更疯狂"),
+                    RuleForgeLocalization.T(
+                        "Make the proposal crazier while preserving its core idea.",
+                        "保留核心想法，但让这个方案更疯狂。"));
+                DrawProposalIntentButton(
+                    RuleForgeLocalization.T("Change Reward", "调整奖励"),
+                    RuleForgeLocalization.T(
+                        "Propose a different reward while preserving the rest.",
+                        "换一种奖励，其他设计尽量保持不变。"));
+                DrawProposalIntentButton(
+                    RuleForgeLocalization.T("Change Risk", "调整风险"),
+                    RuleForgeLocalization.T(
+                        "Propose a different risk while preserving the rest.",
+                        "换一种风险，其他设计尽量保持不变。"));
+                GUILayout.EndHorizontal();
+                if (gameplayProposal.ActionSuggestions != null)
+                {
+                    for (int index = 0;
+                         index < gameplayProposal.ActionSuggestions.Length;
+                         index++)
+                    {
+                        string suggestion =
+                            gameplayProposal.ActionSuggestions[index];
+                        if (!string.IsNullOrWhiteSpace(suggestion))
+                        {
+                            DrawProposalIntentButton(suggestion, suggestion);
+                        }
+                    }
+                }
+            }
+            GUILayout.EndVertical();
+        }
+
+        private void DrawProposalIntentButton(string label, string intent)
+        {
+            GUI.enabled = !aiController.IsBusy;
+            if (GUILayout.Button(label))
+            {
+                RefineGameplayProposal(intent);
+            }
+            GUI.enabled = true;
+        }
+
+        private void RefineGameplayProposal(string intent)
+        {
+            statusMessage = RuleForgeLocalization.T(
+                "AI is revising the gameplay proposal...",
+                "AI 正在调整玩法提案……");
+            proposalRefinement = string.Empty;
+            aiController.AnalyzeGameplay(
+                gameplayProposalPrompt,
+                gameplayProposal,
+                intent,
+                HandleGameplayProposal);
+        }
+
+        private static void DrawStringList(string[] values)
+        {
+            if (values == null)
+            {
+                return;
+            }
+            for (int index = 0; index < values.Length; index++)
+            {
+                if (!string.IsNullOrWhiteSpace(values[index]))
+                {
+                    GUILayout.Label("• " + values[index]);
+                }
             }
         }
 
@@ -910,7 +1078,10 @@ namespace RuleForge.UI
             bool canPlay = IsCurrentDraftValidated() &&
                            currentDraftValidation != null &&
                            currentDraftValidation.IsValid &&
-                           pendingModification == null;
+                           pendingModification == null &&
+                           pendingGenerationRepair == null &&
+                           modificationProposal == null &&
+                           (aiController == null || !aiController.IsBusy);
             GUI.enabled = canPlay;
             if (GUILayout.Button(RuleForgeLocalization.T(
                     "PLAY THIS CHALLENGE",
@@ -958,8 +1129,8 @@ namespace RuleForge.UI
                              pendingModification == null;
             GUI.enabled = canModify;
             if (GUILayout.Button(RuleForgeLocalization.T(
-                    "MODIFY CHALLENGE",
-                    "修改玩法"), GUILayout.Height(42f)))
+                    "ASK AI TO ANALYZE THE CHANGE",
+                    "让 AI 分析修改建议"), GUILayout.Height(42f)))
             {
                 if (TryBuildCandidate(
                         out ChallengeSpec current,
@@ -968,13 +1139,16 @@ namespace RuleForge.UI
                     modificationBase = JsonUtility.FromJson<ChallengeSpec>(
                         JsonUtility.ToJson(current));
                     pendingModificationDiff.Clear();
+                    modificationProposal = null;
+                    modificationProposalPrompt = modificationPrompt;
+                    modificationRequestSignature = BuildDraftSignature();
                     statusMessage = RuleForgeLocalization.T(
-                        "AI is generating a minimal ChallengePatch...",
-                        "AI 正在生成最小化修改方案……");
-                    aiController.ModifyChallenge(
+                        "AI is identifying the smallest relevant change...",
+                        "AI 正在判断最相关的最小修改……");
+                    aiController.AnalyzeModification(
                         modificationPrompt,
                         current,
-                        HandleAIModificationPreview);
+                        HandleModificationProposal);
                 }
                 else
                 {
@@ -983,7 +1157,176 @@ namespace RuleForge.UI
             }
 
             GUI.enabled = true;
+            DrawModificationProposal();
             DrawPendingModification();
+        }
+
+        private void DrawImproveWithAI()
+        {
+            GUILayout.Space(10f);
+            GUI.enabled = CanUseRealAI() && !aiController.IsBusy &&
+                          pendingModification == null &&
+                          IsCurrentDraftValidated() &&
+                          currentDraftValidation != null &&
+                          currentDraftValidation.IsValid;
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "IMPROVE WITH AI", "让 AI 改进玩法"),
+                    GUILayout.Height(38f)))
+            {
+                if (TryBuildCandidate(
+                        out ChallengeSpec current,
+                        out string error))
+                {
+                    improvementSet = null;
+                    improvementRequestSignature = BuildDraftSignature();
+                    statusMessage = RuleForgeLocalization.T(
+                        "AI is reviewing the current ChallengeSpec...",
+                        "AI 正在审查当前真实 ChallengeSpec……");
+                    aiController.AnalyzeImprovements(
+                        current,
+                        HandleImprovementSet);
+                }
+                else
+                {
+                    statusMessage = error;
+                }
+            }
+            GUI.enabled = true;
+
+            if (improvementSet == null)
+            {
+                return;
+            }
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "AI GAMEPLAY CRITIC", "AI 玩法评审"), GUI.skin.box);
+            GUILayout.Label(improvementSet.Summary);
+            GameplayImprovementSuggestion[] suggestions =
+                improvementSet.Suggestions;
+            for (int index = 0; index < suggestions.Length; index++)
+            {
+                GameplayImprovementSuggestion suggestion = suggestions[index];
+                if (suggestion == null ||
+                    string.IsNullOrWhiteSpace(suggestion.Intent))
+                {
+                    continue;
+                }
+
+                GUILayout.Label(suggestion.Title);
+                GUILayout.Label(suggestion.Reasoning);
+                GUI.enabled = !aiController.IsBusy &&
+                              pendingModification == null;
+                if (GUILayout.Button(RuleForgeLocalization.T(
+                        "EXPLORE: ", "进一步分析：") + suggestion.Title))
+                {
+                    BeginSuggestedImprovement(suggestion.Intent);
+                }
+                GUI.enabled = true;
+            }
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "HIDE SUGGESTIONS", "收起建议")))
+            {
+                improvementSet = null;
+                improvementRequestSignature = string.Empty;
+            }
+            GUILayout.EndVertical();
+        }
+
+        private void BeginSuggestedImprovement(string intent)
+        {
+            if (!TryBuildCandidate(
+                    out ChallengeSpec current,
+                    out string error))
+            {
+                statusMessage = error;
+                return;
+            }
+
+            modificationPrompt = intent;
+            modificationProposalPrompt = intent;
+            modificationBase = JsonUtility.FromJson<ChallengeSpec>(
+                JsonUtility.ToJson(current));
+            modificationProposal = null;
+            modificationRequestSignature = BuildDraftSignature();
+            pendingModificationDiff.Clear();
+            statusMessage = RuleForgeLocalization.T(
+                "AI is turning the selected idea into a minimal change proposal...",
+                "AI 正在把所选建议转换为最小修改提案……");
+            aiController.AnalyzeModification(
+                intent,
+                current,
+                HandleModificationProposal);
+        }
+
+        private void DrawModificationProposal()
+        {
+            if (modificationProposal == null || pendingModification != null)
+            {
+                return;
+            }
+
+            GUILayout.Space(8f);
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T("USER", "玩家"));
+            GUILayout.Label(modificationProposalPrompt, GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "AI CHANGE PROPOSAL", "AI 修改提案"), GUI.skin.box);
+            GUILayout.Label(modificationProposal.Summary);
+            DrawStringList(modificationProposal.ProposedChanges);
+            if (!string.IsNullOrWhiteSpace(
+                    modificationProposal.DesignReasoningSummary))
+            {
+                GUILayout.Label(modificationProposal.DesignReasoningSummary);
+            }
+            DrawStringList(modificationProposal.Warnings);
+            if (!string.IsNullOrWhiteSpace(
+                    modificationProposal.ClarificationQuestion))
+            {
+                GUILayout.Label(modificationProposal.ClarificationQuestion,
+                    GUI.skin.box);
+                GUILayout.Label(RuleForgeLocalization.T(
+                    "Rewrite your feedback above and analyze again.",
+                    "请在上方补充说明后重新分析。"));
+            }
+
+            GUI.enabled = modificationProposal.CanModify &&
+                          !aiController.IsBusy &&
+                          !string.IsNullOrWhiteSpace(
+                              modificationProposal.PatchInstruction);
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "CONFIRM AND BUILD PATCH",
+                    "确认并生成修改"), GUILayout.Height(38f)))
+            {
+                if (!string.Equals(
+                        modificationRequestSignature,
+                        BuildDraftSignature(),
+                        StringComparison.Ordinal))
+                {
+                    modificationProposal = null;
+                    statusMessage = RuleForgeLocalization.T(
+                        "The challenge changed. Ask AI to analyze the modification again.",
+                        "玩法已经变化，请让 AI 重新分析修改要求。" );
+                    GUI.enabled = true;
+                    GUILayout.EndVertical();
+                    return;
+                }
+                patchRequestSignature = modificationRequestSignature;
+                statusMessage = RuleForgeLocalization.T(
+                    "AI is building the confirmed minimal ChallengePatch...",
+                    "AI 正在生成已确认的最小修改……");
+                aiController.ModifyChallenge(
+                    modificationProposal.PatchInstruction,
+                    modificationBase,
+                    HandleAIModificationPreview);
+            }
+            GUI.enabled = true;
+            if (GUILayout.Button(RuleForgeLocalization.T("CANCEL", "取消")))
+            {
+                modificationProposal = null;
+                modificationProposalPrompt = string.Empty;
+            }
+            GUILayout.EndVertical();
         }
 
         private void DrawPendingModification()
@@ -998,6 +1341,16 @@ namespace RuleForge.UI
             GUILayout.Label(RuleForgeLocalization.T(
                 "Proposed Changes",
                 "建议修改"), GUI.skin.box);
+            if (pendingModificationPreview != null &&
+                pendingModificationPreview.RequiresRepairConfirmation)
+            {
+                GUILayout.Label(RuleForgeLocalization.T(
+                    "The original patch exceeded Validator limits:",
+                    "原始修改超出验证器限制："));
+                DrawStringList(pendingModificationPreview.RepairSourceErrors);
+                GUILayout.Label(pendingModificationPreview.RepairSummary);
+                DrawStringList(pendingModificationPreview.RepairChanges);
+            }
             if (pendingModificationDiff.Count == 0)
             {
                 GUILayout.Label(RuleForgeLocalization.T(
@@ -1283,7 +1636,12 @@ namespace RuleForge.UI
         private void ClearPendingModification()
         {
             pendingModification = null;
+            pendingModificationPreview = null;
             modificationBase = null;
+            modificationProposal = null;
+            modificationProposalPrompt = string.Empty;
+            modificationRequestSignature = string.Empty;
+            patchRequestSignature = string.Empty;
             pendingModificationDiff.Clear();
         }
 
@@ -1688,8 +2046,17 @@ namespace RuleForge.UI
                 return;
             }
 
+            if (preview.RequiresRepairConfirmation)
+            {
+                pendingGenerationRepair = preview;
+                statusMessage = RuleForgeLocalization.T(
+                    "Validator rejected the first result. AI prepared a legal repair for your confirmation.",
+                    "验证器拒绝了初始结果。AI 已根据真实错误准备合法修正版，请确认。" );
+                return;
+            }
+
             ClearPendingModification();
-            lastGeneratedPrompt = creationPrompt;
+            lastGeneratedPrompt = gameplayProposalPrompt;
             lastModificationPrompt = string.Empty;
             LoadChallengeForEditing(preview.Challenge);
             ValidationResult currentValidation = ruleEngine.ValidateChallenge(
@@ -1711,6 +2078,13 @@ namespace RuleForge.UI
 
         private void HandleAIModificationPreview(AIChallengePreview preview)
         {
+            if (!IsExpectedDraft(patchRequestSignature))
+            {
+                ClearPendingModification();
+                statusMessage = BuildStaleAIResultMessage();
+                return;
+            }
+
             if (preview == null || !preview.Success)
             {
                 statusMessage = preview != null
@@ -1732,18 +2106,180 @@ namespace RuleForge.UI
             }
 
             pendingModification = preview.Challenge;
-            lastModificationPrompt = modificationPrompt;
+            pendingModificationPreview = preview;
+            lastModificationPrompt = modificationProposal != null
+                ? modificationProposal.PatchInstruction
+                : modificationPrompt;
             BuildChallengeDiff(
                 modificationBase,
                 pendingModification,
                 pendingModificationDiff);
-            statusMessage = pendingModificationDiff.Count > 0
+            statusMessage = preview.RequiresRepairConfirmation
+                ? RuleForgeLocalization.T(
+                    "Validator rejected the first patch. Review the AI-repaired legal version before applying it.",
+                    "验证器拒绝了初始修改。请审核 AI 修复后的合法版本再应用。")
+                : pendingModificationDiff.Count > 0
                 ? RuleForgeLocalization.T(
                     "Review the proposed changes before applying them.",
                     "请先查看修改前后的差异，再决定是否应用。")
                 : RuleForgeLocalization.T(
                     "AI returned no visible change. Nothing was applied.",
                     "AI 没有返回可见修改。当前玩法未被更改。" );
+        }
+
+        private void HandleGameplayProposal(
+            AIGameplayResult<GameplayProposal> result)
+        {
+            if (result == null || !result.Success)
+            {
+                statusMessage = result != null
+                    ? result.Error
+                    : RuleForgeLocalization.T(
+                        "AI returned no gameplay proposal.",
+                        "AI 没有返回玩法提案。");
+                return;
+            }
+
+            gameplayProposal = result.Value;
+            statusMessage = gameplayProposal.CanGenerate
+                ? RuleForgeLocalization.T(
+                    "Review the proposal, then choose Generate This.",
+                    "请先审核 AI 的玩法提案，再选择“按这个方案生成”。")
+                : RuleForgeLocalization.T(
+                    "The designer needs one clarification before generation.",
+                    "AI 策划需要你补充一个关键说明。" );
+        }
+
+        private void HandleModificationProposal(
+            AIGameplayResult<GameplayModificationProposal> result)
+        {
+            if (!IsExpectedDraft(modificationRequestSignature))
+            {
+                modificationProposal = null;
+                statusMessage = BuildStaleAIResultMessage();
+                return;
+            }
+
+            if (result == null || !result.Success)
+            {
+                statusMessage = result != null
+                    ? result.Error
+                    : RuleForgeLocalization.T(
+                        "AI returned no modification proposal.",
+                        "AI 没有返回修改提案。");
+                return;
+            }
+
+            modificationProposal = result.Value;
+            statusMessage = modificationProposal.CanModify
+                ? RuleForgeLocalization.T(
+                    "Review the smallest proposed change before building a patch.",
+                    "请审核最小修改建议，再确认生成 Patch。")
+                : RuleForgeLocalization.T(
+                    "The request is ambiguous. Clarify it and analyze again.",
+                    "这个修改存在歧义，请补充说明后重新分析。" );
+        }
+
+        private void HandleImprovementSet(
+            AIGameplayResult<GameplayImprovementSet> result)
+        {
+            if (!IsExpectedDraft(improvementRequestSignature))
+            {
+                improvementSet = null;
+                statusMessage = BuildStaleAIResultMessage();
+                return;
+            }
+
+            if (result == null || !result.Success)
+            {
+                statusMessage = result != null
+                    ? result.Error
+                    : RuleForgeLocalization.T(
+                        "AI returned no improvement suggestions.",
+                        "AI 没有返回改进建议。");
+                return;
+            }
+
+            improvementSet = result.Value;
+            statusMessage = RuleForgeLocalization.T(
+                "Choose an idea to explore. Nothing has been changed yet.",
+                "选择一个方向继续分析；当前玩法尚未发生任何修改。" );
+        }
+
+        private bool IsExpectedDraft(string signature)
+        {
+            return !string.IsNullOrWhiteSpace(signature) &&
+                   string.Equals(
+                       signature,
+                       BuildDraftSignature(),
+                       StringComparison.Ordinal);
+        }
+
+        private static string BuildStaleAIResultMessage()
+        {
+            return RuleForgeLocalization.T(
+                "The challenge changed while AI was working. The outdated result was discarded; analyze again.",
+                "AI 处理期间玩法已发生变化。过期结果已丢弃，请重新分析。" );
+        }
+
+        private void DrawGenerationRepair()
+        {
+            if (pendingGenerationRepair == null)
+            {
+                return;
+            }
+
+            GUILayout.Space(8f);
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "VALIDATOR REPAIR PROPOSAL", "验证器修复提案"), GUI.skin.box);
+            DrawStringList(pendingGenerationRepair.RepairSourceErrors);
+            GUILayout.Label(pendingGenerationRepair.RepairSummary);
+            DrawStringList(pendingGenerationRepair.RepairChanges);
+            if (!string.IsNullOrWhiteSpace(
+                    pendingGenerationRepair.RepairReasoning))
+            {
+                GUILayout.Label(pendingGenerationRepair.RepairReasoning);
+            }
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "USE REPAIRED VERSION", "使用修正版"),
+                    GUILayout.Height(38f)))
+            {
+                AIChallengePreview accepted = pendingGenerationRepair;
+                pendingGenerationRepair = null;
+                ClearPendingModification();
+                lastGeneratedPrompt = gameplayProposalPrompt;
+                LoadChallengeForEditing(accepted.Challenge);
+                ruleEngine.ValidateChallenge(
+                    accepted.Challenge, rewardStrength, penaltyStrength);
+                CaptureCurrentValidation();
+                MarkCurrentDraftValidated();
+                statusMessage = RuleForgeLocalization.T(
+                    "Repaired version accepted — Validator PASS.",
+                    "已接受修正版 — 验证器通过。" );
+            }
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "ADJUST AGAIN", "继续调整")))
+            {
+                pendingGenerationRepair = null;
+                proposalRefinement = RuleForgeLocalization.T(
+                    "Propose another legal version while preserving the core idea.",
+                    "保留核心想法，再提出一个符合系统限制的方案。" );
+                statusMessage = RuleForgeLocalization.T(
+                    "Edit the refinement above, then send it to the AI Designer.",
+                    "请在上方编辑调整要求，再发送给 AI 策划。" );
+            }
+            if (GUILayout.Button(RuleForgeLocalization.T("CANCEL", "取消")))
+            {
+                pendingGenerationRepair = null;
+                statusMessage = RuleForgeLocalization.T(
+                    "Repair cancelled. Nothing was applied.",
+                    "已取消修复，未应用任何内容。" );
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
         }
 
         private void DrawStrengthSliders()
@@ -2252,6 +2788,12 @@ namespace RuleForge.UI
                 GUILayout.Label(RuleForgeLocalization.T(
                     $"ERROR: {validation.Errors[index]}",
                     $"错误：{RuleForgeLocalization.ValidationMessage(validation.Errors[index])}"));
+            }
+            for (int index = 0; index < validation.Warnings.Count; index++)
+            {
+                GUILayout.Label(RuleForgeLocalization.T(
+                    $"WARNING: {validation.Warnings[index]}",
+                    $"警告：{RuleForgeLocalization.ValidationMessage(validation.Warnings[index])}"));
             }
 
             BalanceEvaluation balance = currentDraftBalance;

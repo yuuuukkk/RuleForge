@@ -23,6 +23,52 @@ namespace RuleForge.AI
             modificationPatchJson = patchJson;
         }
 
+        public IEnumerator AnalyzeGameplay(
+            AIProposalAnalysisRequest request,
+            Action<AIGameplayResult<GameplayProposal>> onComplete)
+        {
+            yield return null;
+            onComplete?.Invoke(AIGameplayResult<GameplayProposal>.Failed(
+                "Mock Provider 只能提供固定离线样例，不能冒充 AI Gameplay Designer。"));
+        }
+
+        public IEnumerator AnalyzeModification(
+            AIModificationProposalRequest request,
+            Action<AIGameplayResult<GameplayModificationProposal>> onComplete)
+        {
+            yield return null;
+            onComplete?.Invoke(
+                AIGameplayResult<GameplayModificationProposal>.Failed(
+                    "Mock Provider 无法理解自然语言试玩反馈。"));
+        }
+
+        public IEnumerator RepairChallenge(
+            AIChallengeRepairRequest request,
+            Action<AIGameplayResult<GameplayRepairResult>> onComplete)
+        {
+            yield return null;
+            onComplete?.Invoke(AIGameplayResult<GameplayRepairResult>.Failed(
+                "Mock Provider 无法根据 Validator 结果修复玩法。"));
+        }
+
+        public IEnumerator AnalyzeImprovements(
+            AIImprovementAnalysisRequest request,
+            Action<AIGameplayResult<GameplayImprovementSet>> onComplete)
+        {
+            yield return null;
+            onComplete?.Invoke(AIGameplayResult<GameplayImprovementSet>.Failed(
+                "Mock Provider 无法提供真实 AI 改进建议。"));
+        }
+
+        public IEnumerator RepairPatch(
+            AIChallengePatchRepairRequest request,
+            Action<AIGameplayResult<ChallengePatch>> onComplete)
+        {
+            yield return null;
+            onComplete?.Invoke(AIGameplayResult<ChallengePatch>.Failed(
+                "Mock Provider 无法根据 Patch 错误修复修改。"));
+        }
+
         public IEnumerator GenerateChallenge(
             AIChallengeGenerationRequest request,
             Action<AIGameplayResult<ChallengeSpec>> onComplete)

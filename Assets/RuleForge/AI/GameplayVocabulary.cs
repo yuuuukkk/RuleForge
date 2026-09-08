@@ -88,8 +88,15 @@ namespace RuleForge.AI
                     {
                         builder.Append("- ").Append(limit.EffectId)
                             .Append(": ").Append(limit.MinimumValue)
-                            .Append(" to ").Append(limit.MaximumValue)
-                            .AppendLine();
+                            .Append(" to ").Append(limit.MaximumValue);
+                        if (limit.MaximumStackedMagnitude > 0f)
+                        {
+                            builder.Append(", maximum absolute total at full " +
+                                           "stacks=")
+                                .Append(limit.MaximumStackedMagnitude);
+                        }
+
+                        builder.AppendLine();
                     }
                 }
             }
@@ -126,7 +133,9 @@ namespace RuleForge.AI
                 "lower magnitudes, bounded stacks, or reliable conditions. Crazy " +
                 "or random designs should use controlled probability and visible " +
                 "consequences. Continuous growth should use Stack with a finite " +
-                "maxStacks. Short bursts should use positive Duration instead of " +
+                "maxStacks, and absolute value multiplied by maxStacks must stay " +
+                "inside the catalog's full-stack safety limit. Short bursts " +
+                "should use positive Duration instead of " +
                 "permanent stacking. State-dependent designs should use Scaling " +
                 "with the appropriate runtime source and StackMode None. Rule-loop " +
                 "designs may use multiple generic rules whose events and effects " +
@@ -230,6 +239,78 @@ namespace RuleForge.AI
                    "}," +
                    "\"required\":[\"id\",\"displayName\",\"goal\",\"goalTarget\",\"weapon\",\"rules\"]" +
                    "}";
+        }
+
+        public static string BuildProposalSchema()
+        {
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"summary\":{\"type\":\"string\"}," +
+                   "\"detectedIntent\":{\"type\":\"string\"}," +
+                   "\"confidence\":{\"type\":\"string\",\"enum\":[\"Low\",\"Medium\",\"High\"]}," +
+                   "\"goalExplicit\":{\"type\":\"boolean\"}," +
+                   "\"triggerExplicit\":{\"type\":\"boolean\"}," +
+                   "\"rewardExplicit\":{\"type\":\"boolean\"}," +
+                   "\"riskExplicit\":{\"type\":\"boolean\"}," +
+                   "\"scalingExplicit\":{\"type\":\"boolean\"}," +
+                   "\"limitExplicit\":{\"type\":\"boolean\"}," +
+                   "\"hasConflict\":{\"type\":\"boolean\"}," +
+                   "\"withinVocabulary\":{\"type\":\"boolean\"}," +
+                   "\"suggestedGoal\":{\"type\":\"string\"}," +
+                   "\"suggestedRules\":{\"type\":\"array\",\"maxItems\":6,\"items\":{\"type\":\"string\"}}," +
+                   "\"designReasoningSummary\":{\"type\":\"string\"}," +
+                   "\"warnings\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"string\"}}," +
+                   "\"clarificationQuestion\":{\"type\":\"string\"}," +
+                   "\"canGenerate\":{\"type\":\"boolean\"}," +
+                   "\"actionSuggestions\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"string\"}}" +
+                   "},\"required\":[\"summary\",\"detectedIntent\",\"confidence\",\"goalExplicit\",\"triggerExplicit\",\"rewardExplicit\",\"riskExplicit\",\"scalingExplicit\",\"limitExplicit\",\"hasConflict\",\"withinVocabulary\",\"suggestedGoal\",\"suggestedRules\",\"designReasoningSummary\",\"warnings\",\"clarificationQuestion\",\"canGenerate\",\"actionSuggestions\"]}";
+        }
+
+        public static string BuildModificationProposalSchema()
+        {
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"summary\":{\"type\":\"string\"}," +
+                   "\"detectedIntent\":{\"type\":\"string\"}," +
+                   "\"confidence\":{\"type\":\"string\",\"enum\":[\"Low\",\"Medium\",\"High\"]}," +
+                   "\"parameterFocus\":{\"type\":\"array\",\"maxItems\":5,\"items\":{\"type\":\"string\"}}," +
+                   "\"proposedChanges\":{\"type\":\"array\",\"maxItems\":5,\"items\":{\"type\":\"string\"}}," +
+                   "\"designReasoningSummary\":{\"type\":\"string\"}," +
+                   "\"warnings\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"string\"}}," +
+                   "\"clarificationQuestion\":{\"type\":\"string\"}," +
+                   "\"canModify\":{\"type\":\"boolean\"}," +
+                   "\"patchInstruction\":{\"type\":\"string\"}" +
+                   "},\"required\":[\"summary\",\"detectedIntent\",\"confidence\",\"parameterFocus\",\"proposedChanges\",\"designReasoningSummary\",\"warnings\",\"clarificationQuestion\",\"canModify\",\"patchInstruction\"]}";
+        }
+
+        public static string BuildRepairSchema(EffectCatalog catalog)
+        {
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"summary\":{\"type\":\"string\"}," +
+                   "\"changes\":{\"type\":\"array\",\"maxItems\":8,\"items\":{\"type\":\"string\"}}," +
+                   "\"designReasoningSummary\":{\"type\":\"string\"}," +
+                   "\"repairedChallenge\":" + BuildChallengeSchema(catalog) +
+                   "},\"required\":[\"summary\",\"changes\",\"designReasoningSummary\",\"repairedChallenge\"]}";
+        }
+
+        public static string BuildImprovementSchema()
+        {
+            return "{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"summary\":{\"type\":\"string\"}," +
+                   "\"suggestions\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":3,\"items\":{" +
+                   "\"type\":\"object\",\"additionalProperties\":false," +
+                   "\"properties\":{" +
+                   "\"title\":{\"type\":\"string\"}," +
+                   "\"intent\":{\"type\":\"string\"}," +
+                   "\"reasoning\":{\"type\":\"string\"}" +
+                   "},\"required\":[\"title\",\"intent\",\"reasoning\"]}}" +
+                   "},\"required\":[\"summary\",\"suggestions\"]}";
         }
 
         public static string BuildPatchSchema(EffectCatalog catalog)

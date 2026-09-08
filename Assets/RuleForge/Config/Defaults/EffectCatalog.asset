@@ -23,7 +23,7 @@ MonoBehaviour:
     creatorStatId: WeaponDamage
     creatorOperation: AddPercent
     creatorDefaultValue: 0.05
-    creatorStringValue: 
+    creatorStringValue:
     creatorStackMode: Stack
     creatorMaxStacks: 10
   - effectId: EnemyMoveSpeed
@@ -36,7 +36,7 @@ MonoBehaviour:
     creatorStatId: EnemyMoveSpeed
     creatorOperation: AddPercent
     creatorDefaultValue: 0.08
-    creatorStringValue: 
+    creatorStringValue:
     creatorStackMode: Stack
     creatorMaxStacks: 10
   - effectId: PlayerDamageFromMissingHealth
@@ -49,7 +49,7 @@ MonoBehaviour:
     creatorStatId: WeaponDamage
     creatorOperation: AddPercent
     creatorDefaultValue: 0
-    creatorStringValue: 
+    creatorStringValue:
     creatorStackMode: None
     creatorMaxStacks: 1
   - effectId: SpawnRunner
@@ -75,7 +75,7 @@ MonoBehaviour:
     creatorStatId: 
     creatorOperation: 
     creatorDefaultValue: 10
-    creatorStringValue: 
+    creatorStringValue:
     creatorStackMode: None
     creatorMaxStacks: 1
   - effectId: SpawnGrunt
@@ -114,6 +114,84 @@ MonoBehaviour:
     creatorStatId: PlayerMoveSpeed
     creatorOperation: AddPercent
     creatorDefaultValue: 0
-    creatorStringValue: 
+    creatorStringValue:
     creatorStackMode: None
     creatorMaxStacks: 1
+  - effectId: PlayerMoveSpeed
+    displayName: Player Move Speed
+    polarity: 1
+    balanceWeight: 8
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Player
+    creatorStatId: PlayerMoveSpeed
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.08
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 8
+  - effectId: EnemyDamage
+    displayName: Enemy Attack Damage
+    polarity: 2
+    balanceWeight: 12
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Enemy
+    creatorStatId: EnemyContactDamage
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 10
+  - effectId: EnemyHealth
+    displayName: Enemy Maximum Health
+    polarity: 2
+    balanceWeight: 10
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Enemy
+    creatorStatId: EnemyMaxHealth
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 10
+  - effectId: EnemyAttackSpeed
+    displayName: Enemy Attack Speed
+    polarity: 2
+    balanceWeight: 10
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Enemy
+    creatorStatId: EnemyAttacksPerSecond
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.08
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 10
+  - effectId: WeaponFireRate
+    displayName: Weapon Fire Rate
+    polarity: 1
+    balanceWeight: 10
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Weapon
+    creatorStatId: WeaponShotsPerSecond
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.08
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 10
+  - effectId: WeaponReloadSpeed
+    displayName: Weapon Reload Time
+    polarity: 1
+    balanceWeight: 8
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Weapon
+    creatorStatId: WeaponReloadDuration
+    creatorOperation: AddPercent
+    creatorDefaultValue: -0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 6

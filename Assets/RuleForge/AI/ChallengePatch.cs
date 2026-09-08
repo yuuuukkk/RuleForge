@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using RuleForge.DSL;
 using RuleForge.Rules;
 using UnityEngine;
@@ -428,6 +429,180 @@ namespace RuleForge.AI
             }
 
             return null;
+        }
+    }
+
+    public static class ChallengeRepairScope
+    {
+        public static bool ContainsOnlyInitiallyChangedFields(
+            ChallengeSpec baseline,
+            ChallengeSpec initialCandidate,
+            ChallengeSpec repairedCandidate,
+            out string[] extraPaths)
+        {
+            HashSet<string> allowed = FindChangedPaths(
+                baseline,
+                initialCandidate);
+            HashSet<string> repaired = FindChangedPaths(
+                baseline,
+                repairedCandidate);
+            List<string> extras = new List<string>();
+            foreach (string path in repaired)
+            {
+                if (!allowed.Contains(path))
+                {
+                    extras.Add(path);
+                }
+            }
+
+            extras.Sort(StringComparer.Ordinal);
+            extraPaths = extras.ToArray();
+            return extraPaths.Length == 0;
+        }
+
+        public static HashSet<string> FindChangedPaths(
+            ChallengeSpec before,
+            ChallengeSpec after)
+        {
+            Dictionary<string, string> left = Flatten(before);
+            Dictionary<string, string> right = Flatten(after);
+            HashSet<string> paths = new HashSet<string>(left.Keys);
+            paths.UnionWith(right.Keys);
+            paths.RemoveWhere(path =>
+                left.TryGetValue(path, out string oldValue) &&
+                right.TryGetValue(path, out string newValue) &&
+                string.Equals(oldValue, newValue, StringComparison.Ordinal));
+            return paths;
+        }
+
+        private static Dictionary<string, string> Flatten(ChallengeSpec challenge)
+        {
+            Dictionary<string, string> values =
+                new Dictionary<string, string>(StringComparer.Ordinal);
+            if (challenge == null)
+            {
+                return values;
+            }
+
+            Add(values, "challenge/id", challenge.Id);
+            Add(values, "challenge/displayName", challenge.DisplayName);
+            Add(values, "challenge/goal", challenge.Goal);
+            Add(values, "challenge/goalTarget", challenge.GoalTarget);
+            Add(values, "challenge/weapon", challenge.Weapon);
+            GameplayRule[] rules = challenge.Rules;
+            for (int ruleIndex = 0; ruleIndex < rules.Length; ruleIndex++)
+            {
+                GameplayRule rule = rules[ruleIndex];
+                string ruleKey = "rules/" + StableKey(
+                    rule != null ? rule.Id : string.Empty,
+                    ruleIndex);
+                Add(values, ruleKey + "/present", rule != null ? "1" : "0");
+                if (rule == null)
+                {
+                    continue;
+                }
+
+                Add(values, ruleKey + "/id", rule.Id);
+                Add(values, ruleKey + "/trigger",
+                    rule.Trigger != null ? rule.Trigger.Type : string.Empty);
+                FlattenConditions(values, ruleKey, rule.Conditions);
+                FlattenEffects(values, ruleKey, rule.Effects);
+            }
+
+            return values;
+        }
+
+        private static void FlattenConditions(
+            Dictionary<string, string> values,
+            string ruleKey,
+            RuleCondition[] conditions)
+        {
+            for (int index = 0; index < conditions.Length; index++)
+            {
+                RuleCondition condition = conditions[index];
+                string key = ruleKey + "/conditions/" + index;
+                Add(values, key + "/present", condition != null ? "1" : "0");
+                if (condition == null)
+                {
+                    continue;
+                }
+                Add(values, key + "/type", condition.Type);
+                Add(values, key + "/comparison", condition.Comparison);
+                Add(values, key + "/value", condition.Value);
+                Add(values, key + "/stringValue", condition.StringValue);
+            }
+        }
+
+        private static void FlattenEffects(
+            Dictionary<string, string> values,
+            string ruleKey,
+            RuleEffect[] effects)
+        {
+            for (int index = 0; index < effects.Length; index++)
+            {
+                RuleEffect effect = effects[index];
+                string key = ruleKey + "/effects/" + StableKey(
+                    effect != null ? effect.EffectId : string.Empty,
+                    index);
+                Add(values, key + "/present", effect != null ? "1" : "0");
+                if (effect == null)
+                {
+                    continue;
+                }
+                Add(values, key + "/effectId", effect.EffectId);
+                Add(values, key + "/kind", effect.Kind);
+                Add(values, key + "/target", effect.Target);
+                Add(values, key + "/statId", effect.StatId);
+                Add(values, key + "/operation", effect.Operation);
+                Add(values, key + "/value", effect.Value);
+                Add(values, key + "/stringValue", effect.StringValue);
+                Add(values, key + "/stackMode", effect.StackMode);
+                Add(values, key + "/maxStacks", effect.MaxStacks);
+                Add(values, key + "/duration", effect.Duration);
+                RuleScaling scaling = effect.Scaling;
+                Add(values, key + "/scaling/present", scaling != null ? "1" : "0");
+                if (scaling == null)
+                {
+                    continue;
+                }
+                Add(values, key + "/scaling/source", scaling.Source);
+                Add(values, key + "/scaling/mode", scaling.Mode);
+                Add(values, key + "/scaling/sourceMin", scaling.SourceMin);
+                Add(values, key + "/scaling/sourceMax", scaling.SourceMax);
+                Add(values, key + "/scaling/effectMin", scaling.EffectMin);
+                Add(values, key + "/scaling/effectMax", scaling.EffectMax);
+            }
+        }
+
+        private static string StableKey(string identifier, int index)
+        {
+            return string.IsNullOrWhiteSpace(identifier)
+                ? "index-" + index
+                : identifier + "@" + index;
+        }
+
+        private static void Add(
+            Dictionary<string, string> values,
+            string path,
+            string value)
+        {
+            values[path] = value ?? string.Empty;
+        }
+
+        private static void Add(
+            Dictionary<string, string> values,
+            string path,
+            float value)
+        {
+            values[path] = value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        private static void Add(
+            Dictionary<string, string> values,
+            string path,
+            int value)
+        {
+            values[path] = value.ToString(CultureInfo.InvariantCulture);
         }
     }
 }

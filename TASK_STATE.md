@@ -1102,3 +1102,178 @@ git diff
 ```
 
 Continue from the remaining-work list without repeating completed implementation.
+# 2026-09-02 - AI Gameplay Designer P0
+
+## Goal
+- Replace direct natural-language-to-JSON interaction with a player-confirmed gameplay design workflow.
+- P0 only. No P1 Improve With AI, new gameplay primitives, art changes, or RuleEngine redesign.
+
+## Completed changes
+- Added `GameplayProposal`, `GameplayModificationProposal`, and `GameplayRepairResult` as separate player-facing AI data models.
+- Added strict schemas for proposal analysis, modification proposals, and full repaired challenges.
+- Split the real provider into explicit Interpreter/Designer/Critic, Modifier, and Repairer prompts while keeping one provider implementation.
+- Generate now follows: prompt -> proposal analysis -> player confirmation -> ChallengeSpec -> Validator/BalanceEvaluator.
+- Fuzzy or incomplete ideas receive a concrete proposal and concise design warning; clarification is requested only for materially different interpretations.
+- One-sided/extreme ideas remain the player's choice; the AI warns but does not force balance.
+- Modify now follows: experiential feedback -> minimal modification proposal -> player confirmation -> ChallengePatch -> Validator.
+- Invalid generated or modified challenges receive one repair attempt based on the exact `ValidationResult.Errors`, warnings, and real `BalanceEvaluation`; the repaired result is revalidated and requires player confirmation.
+- Mock provider explicitly refuses to impersonate proposal analysis, fuzzy feedback interpretation, or Validator repair.
+- Creator UI now shows the AI Gameplay Designer proposal, clarification/refinement input, natural-language suggestion buttons, modification proposal, diff, and Validator repair proposal.
+- No `prompt.Contains()` or prompt keyword-to-template gameplay mapping was introduced.
+
+## Key files
+- `Assets/RuleForge/AI/GameplayProposal.cs`
+- `Assets/RuleForge/AI/IAIGameplayService.cs`
+- `Assets/RuleForge/AI/OpenAIResponsesGameplayService.cs`
+- `Assets/RuleForge/AI/MockAIGameplayService.cs`
+- `Assets/RuleForge/AI/AIGameplayController.cs`
+- `Assets/RuleForge/AI/GameplayVocabulary.cs`
+- `Assets/RuleForge/UI/ChallengeCreatorPanel.cs`
+- `Assets/RuleForge/Tests/EditMode/AIGameplayTests.cs`
+
+## Verification
+- `git diff --check`: pass.
+- Static Roslyn compile: Runtime, Editor, EditMode-test, and PlayMode-test assemblies pass.
+- Tests were compiled only and not executed. Unity and PlayMode were not started per user policy.
+
+## Manual Unity verification requested
+1. Complete: `生存60秒，每次击杀伤害+5%，敌人速度+8%，最多10层。` should produce a high-confidence proposal and allow Generate This.
+2. Fuzzy: `给我做个越打越爽的。` should produce a concrete playable proposal instead of failing.
+3. One-sided: `杀人伤害+30%，不要任何惩罚。` should warn and offer suggestions while allowing the original intent.
+4. Illegal: `每次换弹生成100个怪，击杀奖励1000发子弹。` should reach the real Validator, show its errors, propose a repaired legal version, and apply nothing until confirmation.
+5. Modify feelings such as `后期太疯了` should show the smallest relevant Before/After proposal before building/applying a patch.
+6. Ambiguous feedback such as `把那个提高两倍` when multiple growth rules exist should ask which value is meant.
+
+## Remaining
+- User gameplay acceptance of the six cases above.
+- P1 was explicitly requested with `继续` and is now implemented as described below.
+
+## P1 - Improve With AI and AI answer area
+- Added `GameplayImprovementSet` with one to three structured suggestions. Every suggestion contains a player-facing title, explanation, and a natural-language Modifier intent.
+- Added a dedicated real-provider Gameplay Critic request. It reads the current real `ChallengeSpec` and existing vocabulary; Mock explicitly refuses to impersonate this capability.
+- Added `IMPROVE WITH AI / 让 AI 改进玩法` after a validated challenge preview. The button is disabled for dirty or invalid drafts.
+- Selecting an improvement does not change any values. It passes the suggestion's natural-language intent into the existing modification analysis flow, then still requires proposal confirmation, ChallengePatch generation, Validator, Diff, and Apply.
+- Proposal and modification cards now display clear `USER / 玩家` and `AI GAMEPLAY DESIGNER / AI 游戏策划` roles.
+- Stale improvement suggestions are cleared whenever a different challenge is loaded.
+- Static compile again passes for Runtime, Editor, EditMode-test, and PlayMode-test assemblies. Tests were not executed and Unity was not launched.
+
+## P1 manual verification
+1. Generate and validate a challenge, then click `让 AI 改进玩法`.
+2. Confirm that one to three suggestions reflect the current real challenge rather than fixed examples.
+3. Click a suggestion and confirm that nothing changes immediately: an AI modification proposal must appear first.
+4. Confirm the actual change still requires `确认并生成修改`, shows a Diff, passes Validator, and requires `应用修改`.
+
+## Remaining after P1
+- User Unity acceptance of P0 and P1 interaction cases.
+
+## P0/P1 interaction hardening
+- Modification proposal cards now retain the exact player message that was analyzed, even if the editable input box changes while the request is in flight.
+- Advanced manual editing is locked while an improvement set, modification proposal, patch diff, or Validator repair proposal is pending, preventing stale AI advice from being applied to a different draft.
+- Cancelling or applying a pending patch clears its associated proposal state consistently.
+- If AI Repair fails, the UI error now still contains the original real Validator errors instead of replacing them with a generic repair failure.
+- The Interpreter prompt explicitly marks truly unsupported primitives as outside vocabulary and blocks generation while suggesting the nearest supported alternative; unsafe numeric requests still proceed to the real Validator boundary.
+- All four assemblies statically compile after hardening. No Unity instance or tests were run.
+
+## 2026-09-05 - AI interaction reliability pass
+- AI modification and improvement requests now capture the exact Creator draft signature. If the draft changes while a request is running, the callback discards the stale response and asks the player to analyze again.
+- Play and Advanced Edit are disabled while an AI request or unresolved AI review is active, closing the remaining path for draft mutation during an in-flight request.
+- Modification prompts and provider preferences now use the same captured `ChallengeSpec` instead of mixing Creator draft data with the active Runtime challenge.
+- Added real Patch repair: when `ChallengePatchApplier` rejects the first structured patch, the provider receives the original player request, rejected patch, exact application error, current challenge, vocabulary, and patch schema. It gets one retry; the retry must still pass `ChallengePatchApplier`.
+- Added `ChallengeRepairScope`. For Modify repair, the final repaired ChallengeSpec may only differ from the baseline on fields already changed by the initial patch candidate. Any extra path is rejected and reported.
+- Added EditMode coverage for accepting a value-only repair and rejecting an unrelated `maxStacks` change.
+- Static Roslyn compilation passes for Runtime, Editor, EditMode-test, and PlayMode-test assemblies. `git diff --check` passes. Tests were compiled but not run; Unity was not started.
+
+## Manual verification for reliability pass
+1. Start `让 AI 改进玩法` or modification analysis and confirm Advanced Edit/Play cannot mutate the draft while the request is active.
+2. Confirm a malformed AI patch is either repaired once and shown as a normal Diff, or reports both the original and repair errors.
+3. Confirm a Validator repair that attempts unrelated changes is rejected rather than silently accepted.
+
+## 2026-09-07 - Portfolio visual packaging pass
+- Reframed the existing Kenney presentation as `RULEFORGE // AI COMBAT LAB` using only already imported assets and runtime presentation code.
+- Arena now adds a clear player-start ring, blue/red lane guides, north command frame and console, perimeter rhythm pillars, two additional diagonal flank covers with matching collider proxies, arena title, and blue/red spatial beacon lights.
+- Existing PlayerSpawn, enemy spawn transforms, graybox collision roots, RuleEngine, and ChallengeSpec remain intact. Only the two new formal cover pieces receive new named BoxCollider proxies.
+- Arena lighting now uses soft directional shadows, brighter controlled blue ambient light, and subtle linear distance fog for depth without changing render pipeline.
+- Weapon viewmodels now have smooth mouse sway, movement bob, equip drop/raise, per-weapon recoil strength, and procedural reload motion. Existing serialized model bindings and transforms remain authoritative.
+- Each instantiated weapon now receives a stable `MuzzlePoint` child derived once from the equipped model bounds. Tracers and muzzle feedback follow this moving anchor instead of recalculating a renderer corner every shot.
+- Replaced spherical muzzle/impact primitives with pooled short-lived particle bursts while preserving real hitscan hit points and damage authority.
+- Enemy visuals now add a colored ground identity ring and camera-facing Chinese type label (`突击型 / 疾行型 / 重装型`) derived from the real configured enemy type.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile. `git diff --check` passes. Unity and PlayMode were not started and tests were not executed.
+
+## Manual visual verification required
+1. Enter Play and confirm the arena title faces the player, floor guides sit above the floor without flickering, and fog is subtle rather than obscuring enemies.
+2. Walk around the two new flank covers and verify their proxy colliders match the visible containers and do not block spawn points.
+3. Switch weapons 1/2/3 and verify model framing, sway, equip motion, recoil differences, reload arc, and no camera clipping.
+4. Fire at enemy, wall, and sky; verify the particle muzzle flash, impact burst, tracer, and generated MuzzlePoint align with each model.
+5. Verify enemy Chinese labels face the camera, remain readable, and the identity rings do not sink into or float above the floor.
+
+## 2026-09-07 - Screenshot-driven visual correction
+- User screenshots exposed four presentation defects in the first art pass: one-metre imported floor/wall modules were placed on a two-metre grid, the north-wall title was mirrored, unscaled weapon FBX models dominated the camera, and Kenney header-card button copy sat on its decorative divider.
+- Floor and wall visuals now overlap slightly at the existing two-metre centres, producing continuous surfaces without changing the original gameplay colliders.
+- Arena title now faces inward toward the playable area.
+- Weapon visuals now shrink only when their combined renderer bounds exceed the first-person framing limit. Inspector binding position/rotation/scale remain the source values, smaller models are not enlarged, and muzzle placement is calculated after normalization.
+- Imported weapon material colors are preserved by default instead of being flattened to a single runtime tint.
+- The shared GUI button text offset now places labels inside the colored action area of the existing Kenney sci-fi card asset.
+- Static Roslyn compile passes for Runtime, Editor, EditMode-test, and PlayMode-test assemblies after the correction. `git diff --check` passes. Unity and PlayMode were not started.
+
+## Manual verification for screenshot correction
+1. Re-enter Play so `ArtIntegrationVisuals` is rebuilt; confirm the arena floor and all four perimeter walls are continuous rather than isolated blocks.
+2. Face the north command wall and confirm `RULEFORGE // AI COMBAT LAB` is readable rather than mirrored.
+3. Switch weapons 1/2/3 and confirm no model occupies more than a reasonable lower-right viewmodel area, imported colors remain visible, and tracer/muzzle origin still follows the barrel.
+4. Open Main, Pause, Result, and Display Settings menus and confirm button labels sit inside the colored upper action area without touching the white divider.
+
+## 2026-09-07 - Screenshot correction round two
+- Follow-up gameplay screenshot confirms continuous floor, forward-facing title, preserved weapon materials, and corrected menu button labels.
+- Remaining issues visible in the screenshot were an oversized viewmodel, overexposed featureless floor, waist-high-looking perimeter visuals, and an undersized arena title.
+- Reduced the maximum automatic viewmodel bound from 0.82 to 0.58 world units.
+- Perimeter wall visuals now use 2.35 vertical scale while the existing graybox boundary remains collision authority.
+- Existing floor assets now receive a muted blue two-tone material-property tint plus a darker central lane. This changes renderer presentation only and does not clone or replace third-party materials.
+- Enlarged and lowered the north-wall arena title for normal first-person viewing distance.
+- Serialized the new presentation values into `Assets/Scenes/Arena.unity` so the corrected light, viewmodel bound, material policy, and accent colors do not depend on Unity's missing-field initialization behavior.
+- Runtime static Roslyn compilation and `git diff --check` pass after round two. Unity and PlayMode were not started.
+
+## 2026-09-07 - Gameplay optimization P0
+
+### Scope decision
+- User explicitly froze repeated map/weapon visual tuning and requested gameplay-first optimization.
+- This pass changes generic gameplay vocabulary, validation safety, enemy behavior, challenge pacing, and runtime feedback. It does not add showcase-specific scripts, new art, new goals, or P1 timer/streak primitives.
+
+### Expanded real gameplay vocabulary
+- Added six catalog-backed generic StatModifier effects that already map to existing RuntimeStats and EffectExecutor paths: `PlayerMoveSpeed`, `EnemyDamage`, `EnemyHealth`, `EnemyAttackSpeed`, `WeaponFireRate`, and `WeaponReloadSpeed` (negative reload-duration modifier).
+- Added matching trusted identities, polarities, balance weights, value ranges, Chinese names, Creator availability, AI vocabulary exposure, and idempotent Milestone 10 setup configuration.
+- EffectCatalog now contains 14 real effects total. No prompt keyword mapping or showcase template was introduced.
+
+### Stack safety
+- `EffectValueLimit` now supports an optional maximum absolute full-stack magnitude.
+- Validator rejects `abs(value) * maxStacks` above the configured safe total and warns at 80% or more of that total.
+- Blood Pact remains legal (`PlayerDamage 0.05 x 10`, `EnemyMoveSpeed 0.08 x 10`), while combinations such as `PlayerDamage 0.20 x 10` are rejected even though the per-layer number is individually legal.
+- AI vocabulary includes the full-stack limit so the provider can avoid invalid proposals; Validator remains final authority.
+- Added EditMode compile coverage for rejection and near-limit warning. Tests were compiled only, not executed.
+
+### Enemy behavior distinction
+- Added data-driven `EnemyCombatStyle` and tuning fields to EnemyConfig.
+- Grunt uses stable Pursuer behavior.
+- Runner uses a telegraphed short dash when within engagement range, then observes a configurable cooldown.
+- Tank uses the same trusted contact-damage path but has a 1.8x attack windup, making its heavy hit readable and avoidable.
+- Existing EnemyRoot, CharacterController, health, runtime stat modifiers, damage authority, spawning, and visual hierarchy remain intact.
+- Enemy max-health changes now preserve current health percentage, so increases affect already-alive enemies as well as future spawns.
+
+### Generic challenge pacing and feedback
+- Added a 1.5-second preparation phase after challenge reset.
+- All goals expose normalized real progress. Enemy pressure rises at 38% and 72% goal progress, adding one desired alive enemy per tier (baseline 3 -> 4 -> 5).
+- Pacing reads KillCount, Score, or Survive progress through the same goal API and is not tied to a named challenge.
+- HUD now shows preparation/base/rising/final phase, real progress percentage, and prefixes active effects as benefit or risk using EffectCatalog polarity.
+- Creator Developer validation view now displays warnings as well as errors.
+
+### Verification
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies pass static Roslyn compilation.
+- `git diff --check` passes.
+- Unity, PlayMode, and automated tests were not started per user policy.
+
+### Manual Unity verification requested
+1. Start/restart: no baseline enemies for about 1.5 seconds, HUD says `准备阶段`, then baseline enemies appear.
+2. Runner: at medium range it shows the warning marker, pauses briefly, then dashes; it must not dash continuously.
+3. Tank: its attack warning is clearly longer than Grunt/Runner and damage still happens only after windup.
+4. Complete at least 72% of a KillCount or Survive goal: HUD phases should change at about 38% and 72%; desired alive pressure should progress 3 -> 4 -> 5 and reset to 3 next run.
+5. AI/manual Creator: verify the six new effects appear and produce real stat changes/feedback.
+6. Validate `PlayerDamage +20% per kill, max 10 stacks`: it must be rejected for full-stack magnitude; `+12% x10` should pass with a warning.
+7. Apply EnemyHealth growth while enemies are alive: their current/max health ratio should remain consistent and future enemies should inherit the modifier.

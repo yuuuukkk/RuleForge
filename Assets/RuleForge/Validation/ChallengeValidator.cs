@@ -698,7 +698,47 @@ namespace RuleForge.Validation
                 string path = $"rules[{ruleIndex}].effects[{index}]";
                 ValidateEffectValue(effect, path, config, result);
                 ValidateStacksAndDuration(effect, path, config, result);
+                ValidateStackedMagnitude(effect, path, config, result);
                 ValidateScaling(effect, path, config, result);
+            }
+        }
+
+        private static void ValidateStackedMagnitude(
+            RuleEffect effect,
+            string path,
+            GameplayBalanceConfig config,
+            ValidationResult result)
+        {
+            if (!Enum.TryParse(
+                    effect.StackMode,
+                    true,
+                    out RuleStackMode stackMode) ||
+                stackMode != RuleStackMode.Stack ||
+                effect.MaxStacks <= 0 ||
+                !config.TryGetEffectValueLimit(
+                    effect.EffectId,
+                    out EffectValueLimit limit) ||
+                limit.MaximumStackedMagnitude <= 0f)
+            {
+                return;
+            }
+
+            float stackedMagnitude =
+                Math.Abs(effect.Value) * effect.MaxStacks;
+            if (stackedMagnitude > limit.MaximumStackedMagnitude + 0.0001f)
+            {
+                result.AddError(
+                    $"{path} reaches stacked magnitude {stackedMagnitude:0.###}, " +
+                    $"above the safe total {limit.MaximumStackedMagnitude:0.###} " +
+                    $"for '{effect.EffectId}'. Reduce value or maxStacks.");
+                return;
+            }
+
+            if (stackedMagnitude >= limit.MaximumStackedMagnitude * 0.8f)
+            {
+                result.AddWarning(
+                    $"{path} reaches {stackedMagnitude:0.###} when fully " +
+                    "stacked and is close to its gameplay safety limit.");
             }
         }
 

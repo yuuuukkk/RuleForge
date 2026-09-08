@@ -52,6 +52,7 @@ namespace RuleForge.Editor
             }
 
             ConfigureLastStandEffect(balance, catalog);
+            ConfigureExpandedGameplayVocabulary(balance, catalog);
             ruleEngine.ConfigureTuning(balance, catalog);
 
             AnalyticsRecorder recorder =
@@ -160,6 +161,83 @@ namespace RuleForge.Editor
                 "None",
                 1);
             balance.EnsureEffectValueLimit(effectId, -0.75f, 0f);
+        }
+
+        private static void ConfigureExpandedGameplayVocabulary(
+            GameplayBalanceConfig balance,
+            EffectCatalog catalog)
+        {
+            ConfigureStatEffect(
+                balance, catalog, "PlayerDamage", "Player Damage",
+                EffectPolarity.Reward, 10f, "Weapon", "WeaponDamage",
+                0.05f, "Stack", 10, 0f, 1.5f, 1.5f);
+            ConfigureStatEffect(
+                balance, catalog, "EnemyMoveSpeed", "Enemy Move Speed",
+                EffectPolarity.Penalty, 10f, "Enemy", "EnemyMoveSpeed",
+                0.08f, "Stack", 10, 0.05f, 1.5f, 1f);
+            ConfigureStatEffect(
+                balance, catalog, "PlayerMoveSpeed", "Player Move Speed",
+                EffectPolarity.Reward, 8f, "Player", "PlayerMoveSpeed",
+                0.08f, "Stack", 8, 0.03f, 0.35f, 0.75f);
+            ConfigureStatEffect(
+                balance, catalog, "EnemyDamage", "Enemy Attack Damage",
+                EffectPolarity.Penalty, 12f, "Enemy", "EnemyContactDamage",
+                0.1f, "Stack", 10, 0.05f, 0.75f, 1.5f);
+            ConfigureStatEffect(
+                balance, catalog, "EnemyHealth", "Enemy Maximum Health",
+                EffectPolarity.Penalty, 10f, "Enemy", "EnemyMaxHealth",
+                0.1f, "Stack", 10, 0.05f, 1f, 2f);
+            ConfigureStatEffect(
+                balance, catalog, "EnemyAttackSpeed", "Enemy Attack Speed",
+                EffectPolarity.Penalty, 10f, "Enemy",
+                "EnemyAttacksPerSecond", 0.08f, "Stack", 10,
+                0.05f, 0.5f, 1f);
+            ConfigureStatEffect(
+                balance, catalog, "WeaponFireRate", "Weapon Fire Rate",
+                EffectPolarity.Reward, 10f, "Weapon",
+                "WeaponShotsPerSecond", 0.08f, "Stack", 10,
+                0.03f, 0.5f, 1f);
+            ConfigureStatEffect(
+                balance, catalog, "WeaponReloadSpeed", "Weapon Reload Time",
+                EffectPolarity.Reward, 8f, "Weapon",
+                "WeaponReloadDuration", -0.1f, "Stack", 6,
+                -0.5f, -0.03f, 0.7f);
+        }
+
+        private static void ConfigureStatEffect(
+            GameplayBalanceConfig balance,
+            EffectCatalog catalog,
+            string effectId,
+            string displayName,
+            EffectPolarity polarity,
+            float balanceWeight,
+            string target,
+            string statId,
+            float defaultValue,
+            string stackMode,
+            int maxStacks,
+            float minimumValue,
+            float maximumValue,
+            float maximumStackedMagnitude)
+        {
+            catalog.EnsureDefinition(effectId, displayName, polarity);
+            catalog.ConfigureBalanceWeight(effectId, balanceWeight);
+            catalog.ConfigureCreatorTemplate(
+                effectId,
+                true,
+                "StatModifier",
+                target,
+                statId,
+                "AddPercent",
+                defaultValue,
+                string.Empty,
+                stackMode,
+                maxStacks);
+            balance.EnsureEffectValueLimit(
+                effectId,
+                minimumValue,
+                maximumValue,
+                maximumStackedMagnitude);
         }
 
         private static T Load<T>(string path) where T : UnityEngine.Object

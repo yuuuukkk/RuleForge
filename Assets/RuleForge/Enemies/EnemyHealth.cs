@@ -73,7 +73,13 @@ namespace RuleForge.Enemies
 
         private void HandleMaxHealthChanged(float previousMaximum, float newMaximum)
         {
-            CurrentHealth = Mathf.Min(CurrentHealth, newMaximum);
+            float healthRatio = previousMaximum > 0f
+                ? Mathf.Clamp01(CurrentHealth / previousMaximum)
+                : 1f;
+            CurrentHealth = Mathf.Clamp(
+                newMaximum * healthRatio,
+                0f,
+                newMaximum);
             HealthChanged?.Invoke(CurrentHealth, newMaximum);
         }
 
