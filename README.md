@@ -1,6 +1,6 @@
 # RuleForge
 
-RuleForge is an AI Gameplay UGC / FPS rule sandbox. The project is being built strictly milestone by milestone; the current repository contains **Milestone 0 only**.
+RuleForge is an AI Gameplay UGC / FPS rule sandbox. 
 
 ## Current status
 
