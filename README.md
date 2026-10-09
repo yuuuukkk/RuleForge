@@ -16,21 +16,6 @@ RuleForge is an AI Gameplay UGC / FPS rule sandbox. The project is being built s
 3. Open `Assets/Scenes/Arena.unity`.
 4. Keep the project on `2022.3.62f3c1` during V0.1 unless an upgrade is explicitly approved.
 
-## Milestone 0 scene setup checklist
-
-Complete these Editor-only checks before approving Milestone 0:
-
-- [ ] Open `Arena` without Console errors.
-- [ ] Under `Arena/Environment`, verify the ground, four wall, and three cover Cube blockout objects are visible.
-- [ ] Keep the rough blockout near the origin and verify colliders exist on all environment Cubes.
-- [ ] Place `PlayerSpawn` slightly above the ground surface.
-- [ ] Place 6-10 children named `Spawn_01` through `Spawn_06` (or higher) under `EnemySpawnPoints` around the arena.
-- [ ] Keep empty roots named `GameSystems` and `UI` for later milestones.
-- [ ] Save the scene and confirm it is enabled in **File > Build Profiles > Scene List**.
-- [ ] Enter Play Mode once and confirm the project has no compile errors. No gameplay is expected yet.
-
-When all items pass, reply with `Milestone 0 PASS`. Development must not proceed to Milestone 1 before that confirmation.
-
 ## Repository policy
 
 - `main`: stable, accepted milestones.
