@@ -16,6 +16,8 @@ namespace RuleForge.AI
         ModifyDuration,
         ModifyProbability,
         ModifyGoal,
+        ModifyTimeLimit,
+        ModifyTimeDamageScale,
         ModifyWeapon,
         ModifyCondition,
         ModifyScaling,
@@ -50,6 +52,8 @@ namespace RuleForge.AI
         [SerializeField] private float probability;
         [SerializeField] private string goal;
         [SerializeField] private float goalTarget;
+        [SerializeField] private float timeLimit;
+        [SerializeField] private float timeDamageScale;
         [SerializeField] private string weapon;
         [SerializeField] private string trigger;
         [SerializeField] private RuleCondition condition;
@@ -67,6 +71,8 @@ namespace RuleForge.AI
         public float Probability => probability;
         public string Goal => goal ?? string.Empty;
         public float GoalTarget => goalTarget;
+        public float TimeLimit => timeLimit;
+        public float TimeDamageScale => timeDamageScale;
         public string Weapon => weapon ?? string.Empty;
         public string Trigger => trigger ?? string.Empty;
         public RuleCondition Condition => condition;
@@ -108,6 +114,8 @@ namespace RuleForge.AI
                 new List<GameplayRule>(clone.Rules);
             string goal = clone.Goal;
             float goalTarget = clone.GoalTarget;
+            float timeLimit = clone.TimeLimit;
+            float timeDamageScale = clone.TimeDamageScale;
             string weapon = clone.Weapon;
             ChallengePatchOperation[] operations = patch.Operations;
             for (int index = 0; index < operations.Length; index++)
@@ -118,6 +126,8 @@ namespace RuleForge.AI
                         rules,
                         ref goal,
                         ref goalTarget,
+                        ref timeLimit,
+                        ref timeDamageScale,
                         ref weapon,
                         out error))
                 {
@@ -132,7 +142,9 @@ namespace RuleForge.AI
                 goal,
                 goalTarget,
                 weapon,
-                rules.ToArray());
+                rules.ToArray(),
+                timeLimit,
+                timeDamageScale);
             error = string.Empty;
             return true;
         }
@@ -142,6 +154,8 @@ namespace RuleForge.AI
             List<GameplayRule> rules,
             ref string goal,
             ref float goalTarget,
+            ref float timeLimit,
+            ref float timeDamageScale,
             ref string weapon,
             out string error)
         {
@@ -165,6 +179,20 @@ namespace RuleForge.AI
 
                 goal = operation.Goal.Trim();
                 goalTarget = operation.GoalTarget;
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.ModifyTimeLimit)
+            {
+                timeLimit = operation.TimeLimit;
+                error = string.Empty;
+                return true;
+            }
+
+            if (operationType == ChallengePatchOperationType.ModifyTimeDamageScale)
+            {
+                timeDamageScale = operation.TimeDamageScale;
                 error = string.Empty;
                 return true;
             }
@@ -488,6 +516,8 @@ namespace RuleForge.AI
             Add(values, "challenge/displayName", challenge.DisplayName);
             Add(values, "challenge/goal", challenge.Goal);
             Add(values, "challenge/goalTarget", challenge.GoalTarget);
+            Add(values, "challenge/timeLimit", challenge.TimeLimit);
+            Add(values, "challenge/timeDamageScale", challenge.TimeDamageScale);
             Add(values, "challenge/weapon", challenge.Weapon);
             GameplayRule[] rules = challenge.Rules;
             for (int ruleIndex = 0; ruleIndex < rules.Length; ruleIndex++)

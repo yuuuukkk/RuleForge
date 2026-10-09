@@ -24,16 +24,35 @@ namespace RuleForge.AI
             builder.AppendLine("Allowed Comparisons: " + JoinEnum<RuleComparison>());
             builder.AppendLine("Allowed Effect Kinds: " + JoinEnum<RuleEffectKind>());
             builder.AppendLine("Allowed Targets: " + JoinEnum<RuntimeServiceTarget>());
-            builder.AppendLine("Allowed Stats: " + JoinEnum<RuntimeStatId>());
-            builder.AppendLine("Allowed Operations: " + JoinEnum<StatModifierOperation>());
+            builder.AppendLine("Runtime stat names (NOT independently available as " +
+                "effects): " + JoinEnum<RuntimeStatId>());
+            builder.AppendLine("Operations (only when matched by an Effect " +
+                "mapping below): " + JoinEnum<StatModifierOperation>());
             builder.AppendLine("Allowed Stack Modes: " + JoinEnum<RuleStackMode>());
             builder.AppendLine("Allowed Scaling Modes: " + JoinEnum<RuleScalingMode>());
             builder.AppendLine("Allowed Scaling Sources: " + JoinEnum<RuntimeValueSource>());
             builder.AppendLine("Allowed enemy types: Grunt, Runner, Tank.");
-            builder.AppendLine("Allowed Goals: Survive, KillCount, Score.");
+            builder.AppendLine("Allowed Goals: Survive, KillCount, Score, " +
+                "TimeBankTarget, TimeBankSurvive, TimeBankEndless. " +
+                "timeLimit=0 means no deadline. KillCount or Score may use " +
+                "timeLimit from 1 to 300 seconds; reaching zero before the " +
+                "goal is defeat. Survive must use timeLimit=0.");
+            builder.AppendLine("TimeBank goals use timeLimit as starting time " +
+                "and timeDamageScale (0.01 to 1 seconds per damage point) so " +
+                "enemy hits remove time instead of HP. AddTime on EnemyKilled " +
+                "extends the remaining time. TimeBankTarget wins when the " +
+                "remaining bank reaches goalTarget; TimeBankSurvive wins after " +
+                "goalTarget elapsed seconds; TimeBankEndless has goalTarget=0 " +
+                "and ends only when time reaches zero. Do not invent a kill " +
+                "target or extra risk for a time-as-health request. Ask the " +
+                "player to choose one of these three endings if unclear.");
             builder.AppendLine(
                 "Allowed weapons: Assault Rifle, Shotgun, Sniper.");
             builder.AppendLine("Effect mappings (copy these identity fields exactly):");
+            builder.AppendLine("Only listed effectIds are playable. An enum " +
+                "name alone does not authorize a new effect or identity. " +
+                "Numbers, event, conditions, stacks, duration and scaling " +
+                "are editable only within Validator limits.");
 
             if (catalog != null)
             {
@@ -53,7 +72,18 @@ namespace RuleForge.AI
                         .Append(", operation=").Append(definition.CreatorOperation)
                         .Append(", stringValue=").Append(definition.CreatorStringValue)
                         .Append(", polarity=").Append(definition.Polarity)
-                        .AppendLine();
+                        .Append(", defaultValue=")
+                        .Append(definition.CreatorDefaultValue);
+                    if (balance != null &&
+                        balance.TryGetEffectValueLimit(
+                            definition.EffectId, out EffectValueLimit valueLimit))
+                    {
+                        builder.Append(", allowedValue=")
+                            .Append(valueLimit.MinimumValue)
+                            .Append("..")
+                            .Append(valueLimit.MaximumValue);
+                    }
+                    builder.AppendLine();
                 }
             }
 
@@ -110,7 +140,12 @@ namespace RuleForge.AI
                 "value using Equals, NotEquals, LessThan, LessOrEqual, " +
                 "GreaterThan, or GreaterOrEqual. PlayerHPChanged and " +
                 "PlayerAmmoChanged values are current 0-to-1 percentages; " +
-                "EnemyHit, Headshot, PlayerHit, and WeaponFired values are damage.");
+                "EnemyHit, Headshot, PlayerHit, and WeaponFired values are damage. " +
+                "EnemyKilled publishes no numeric value. Do not use EventValue " +
+                "conditions or EventValue scaling on EnemyKilled. To grow on " +
+                "every kill, use one EnemyKilled rule per effect with no numeric " +
+                "condition, Stack mode, and the requested maxStacks. A stack " +
+                "limit is not a kill-count milestone or victory target.");
             builder.AppendLine(
                 "Percent modifiers are decimal fractions: 0.05 means +5%. " +
                 "Do not invent vocabulary or return natural-language rules.");
@@ -143,8 +178,12 @@ namespace RuleForge.AI
                 "EnemyKilled + PlayerDamage + EnemyMoveSpeed. Prefer the smallest " +
                 "set of rules that makes the requested loop legible. When the user " +
                 "specifies a numeric relationship, calculate final parameter values " +
-                "so the requested ratio is actually represented. Before returning, " +
-                "silently verify all identity mappings, numeric ratios, limits, " +
+                "so the requested ratio is actually represented. " +
+                "Treat an explicit survival duration as Survive with that goalTarget " +
+                "and timeLimit=0, not as a timed KillCount goal. Never add an " +
+                "unrequested kill objective. For per-kill stacks, use the effect's " +
+                "Stack/maxStacks; never interpret kill number as EventValue. " +
+                "Before returning, silently verify all identity mappings, numeric ratios, limits, " +
                 "stack/scaling compatibility, and that the output is materially " +
                 "responsive to this prompt. Never use a fixed prompt template or " +
                 "keyword-to-challenge lookup.";
@@ -232,12 +271,14 @@ namespace RuleForge.AI
                    "\"properties\":{" +
                    "\"id\":{\"type\":\"string\"}," +
                    "\"displayName\":{\"type\":\"string\"}," +
-                   "\"goal\":{\"type\":\"string\",\"enum\":[\"Survive\",\"KillCount\",\"Score\"]}," +
+                   "\"goal\":{\"type\":\"string\",\"enum\":[\"Survive\",\"KillCount\",\"Score\",\"TimeBankTarget\",\"TimeBankSurvive\",\"TimeBankEndless\"]}," +
                    "\"goalTarget\":{\"type\":\"number\"}," +
+                   "\"timeLimit\":{\"type\":\"number\"}," +
+                   "\"timeDamageScale\":{\"type\":\"number\"}," +
                    "\"weapon\":{\"type\":\"string\",\"enum\":[\"Assault Rifle\",\"Shotgun\",\"Sniper\"]}," +
                    "\"rules\":{\"type\":\"array\",\"items\":" + ruleSchema + "}" +
                    "}," +
-                   "\"required\":[\"id\",\"displayName\",\"goal\",\"goalTarget\",\"weapon\",\"rules\"]" +
+                   "\"required\":[\"id\",\"displayName\",\"goal\",\"goalTarget\",\"timeLimit\",\"timeDamageScale\",\"weapon\",\"rules\"]" +
                    "}";
         }
 
@@ -259,12 +300,18 @@ namespace RuleForge.AI
                    "\"withinVocabulary\":{\"type\":\"boolean\"}," +
                    "\"suggestedGoal\":{\"type\":\"string\"}," +
                    "\"suggestedRules\":{\"type\":\"array\",\"maxItems\":6,\"items\":{\"type\":\"string\"}}," +
+                   "\"requiredGoalType\":{\"type\":\"string\",\"enum\":[\"\",\"Survive\",\"KillCount\",\"Score\",\"TimeBankTarget\",\"TimeBankSurvive\",\"TimeBankEndless\"]}," +
+                   "\"requiredGoalTarget\":{\"type\":\"number\",\"minimum\":0}," +
+                   "\"requiredTimeLimitSeconds\":{\"type\":\"number\",\"minimum\":0}," +
+                   "\"requiredTimeDamageScale\":{\"type\":\"number\",\"minimum\":0}," +
+                   "\"requiredMechanics\":{\"type\":\"array\",\"maxItems\":6,\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"trigger\":{\"type\":\"string\"},\"effectId\":{\"type\":\"string\"},\"value\":{\"type\":\"number\"},\"exactValue\":{\"type\":\"boolean\"},\"maxStacks\":{\"type\":\"integer\",\"minimum\":0},\"exactMaxStacks\":{\"type\":\"boolean\"}},\"required\":[\"trigger\",\"effectId\",\"value\",\"exactValue\",\"maxStacks\",\"exactMaxStacks\"]}}," +
                    "\"designReasoningSummary\":{\"type\":\"string\"}," +
                    "\"warnings\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"string\"}}," +
                    "\"clarificationQuestion\":{\"type\":\"string\"}," +
                    "\"canGenerate\":{\"type\":\"boolean\"}," +
+                   "\"penaltyRewardRatio\":{\"type\":\"number\",\"minimum\":0,\"maximum\":3}," +
                    "\"actionSuggestions\":{\"type\":\"array\",\"maxItems\":3,\"items\":{\"type\":\"string\"}}" +
-                   "},\"required\":[\"summary\",\"detectedIntent\",\"confidence\",\"goalExplicit\",\"triggerExplicit\",\"rewardExplicit\",\"riskExplicit\",\"scalingExplicit\",\"limitExplicit\",\"hasConflict\",\"withinVocabulary\",\"suggestedGoal\",\"suggestedRules\",\"designReasoningSummary\",\"warnings\",\"clarificationQuestion\",\"canGenerate\",\"actionSuggestions\"]}";
+                   "},\"required\":[\"summary\",\"detectedIntent\",\"confidence\",\"goalExplicit\",\"triggerExplicit\",\"rewardExplicit\",\"riskExplicit\",\"scalingExplicit\",\"limitExplicit\",\"hasConflict\",\"withinVocabulary\",\"suggestedGoal\",\"suggestedRules\",\"requiredGoalType\",\"requiredGoalTarget\",\"requiredTimeLimitSeconds\",\"requiredTimeDamageScale\",\"requiredMechanics\",\"designReasoningSummary\",\"warnings\",\"clarificationQuestion\",\"canGenerate\",\"penaltyRewardRatio\",\"actionSuggestions\"]}";
         }
 
         public static string BuildModificationProposalSchema()
@@ -343,8 +390,10 @@ namespace RuleForge.AI
                    "\"maxStacks\":{\"type\":\"integer\"}," +
                    "\"duration\":{\"type\":\"number\"}," +
                    "\"probability\":{\"type\":\"number\"}," +
-                   "\"goal\":{\"type\":\"string\",\"enum\":[\"\",\"Survive\",\"KillCount\",\"Score\"]}," +
+                   "\"goal\":{\"type\":\"string\",\"enum\":[\"\",\"Survive\",\"KillCount\",\"Score\",\"TimeBankTarget\",\"TimeBankSurvive\",\"TimeBankEndless\"]}," +
                    "\"goalTarget\":{\"type\":\"number\"}," +
+                   "\"timeLimit\":{\"type\":\"number\"}," +
+                   "\"timeDamageScale\":{\"type\":\"number\"}," +
                    "\"weapon\":{\"type\":\"string\",\"enum\":[\"\",\"Assault Rifle\",\"Shotgun\",\"Sniper\"]}," +
                    "\"trigger\":{\"type\":\"string\",\"enum\":" + eventNamesWithEmpty + "}," +
                    "\"condition\":" + nullableCondition + "," +
@@ -352,7 +401,7 @@ namespace RuleForge.AI
                    "\"scaling\":" + nullableScaling + "," +
                    "\"rule\":" + nullableRule +
                    "}," +
-                   "\"required\":[\"operation\",\"ruleId\",\"effectId\",\"conditionIndex\",\"value\",\"maxStacks\",\"duration\",\"probability\",\"goal\",\"goalTarget\",\"weapon\",\"trigger\",\"condition\",\"effect\",\"scaling\",\"rule\"]" +
+                   "\"required\":[\"operation\",\"ruleId\",\"effectId\",\"conditionIndex\",\"value\",\"maxStacks\",\"duration\",\"probability\",\"goal\",\"goalTarget\",\"timeLimit\",\"timeDamageScale\",\"weapon\",\"trigger\",\"condition\",\"effect\",\"scaling\",\"rule\"]" +
                    "}}}," +
                    "\"required\":[\"operations\"]" +
                    "}";

@@ -1277,3 +1277,170 @@ Continue from the remaining-work list without repeating completed implementation
 5. AI/manual Creator: verify the six new effects appear and produce real stat changes/feedback.
 6. Validate `PlayerDamage +20% per kill, max 10 stacks`: it must be rejected for full-stack magnitude; `+12% x10` should pass with a warning.
 7. Apply EnemyHealth growth while enemies are alive: their current/max health ratio should remain consistent and future enemies should inherit the modifier.
+
+## 2026-09-08 - Creator simplification and UI/HUD pass
+
+- Audited the Creator and confirmed the apparent three-input UX came from separate create, proposal-refinement, and modify text fields.
+- Replaced those visible paths with one persistent natural-language composer. Its action changes by state: new gameplay proposal, revise current proposal, or propose the smallest modification to the generated challenge.
+- Kept the real AI boundaries intact: proposal confirmation still precedes ChallengeSpec generation; modifications still require proposal, ChallengePatch, Validator, Diff, and explicit Apply.
+- Removed confidence, raw balance scores, and other technical detail from the primary summary. Manual parameters, balance details, AI improvement analysis, provider configuration, validation, and raw DSL remain under Advanced/Developer views.
+- Reworked the shared IMGUI theme into a dark navy/cyan minimal presentation and removed the old header-card text offset treatment.
+- Verified online that the already-imported Kenney `UI Pack - Sci-Fi 2.0` is the current official CC0/commercial-use pack, so no duplicate asset import was needed. Rewired the existing glass panel/plain button assets instead of the decorative header cards.
+- Added a real player-health bar using the imported Kenney grey bar track and red gloss fill. Fill width reads `PlayerCurrentHealth / PlayerMaxHealth`; it does not use mock values.
+- Updated the idempotent Milestone 11 art bootstrap and serialized Arena references for the new panel/button/health-bar assets.
+- Static Roslyn compilation passes for Runtime, Editor, EditMode-test, and PlayMode-test assemblies. `git diff --check` passes. Unity and PlayMode were not started; tests were compiled only.
+
+### Manual Unity verification requested
+1. Open Creator and confirm only one natural-language text area is visible in the normal flow.
+2. Enter a new idea, revise the returned proposal using the same text area, generate it, then request a modification using that same text area.
+3. Confirm AI proposal -> ChallengeSpec -> Validator and modification -> ChallengePatch -> Diff -> Apply behavior is unchanged.
+4. Confirm Advanced Edit contains manual parameters/balance details and Developer View contains API/provider/validation/raw DSL.
+5. Play, take damage, heal/restart, and confirm the red health bar follows the real current/max health ratio and resets correctly.
+6. Check Creator, main/pause/result menus, and HUD at 1280x720 and 1920x1080 for clipping or unreadable Chinese text.
+
+### 2026-09-08 - Player-facing AI proposal correction
+- Clarified the AI product role: it now acts first as a prompt editor/gameplay designer that turns an imprecise player sentence into one precise, playable, player-facing sentence.
+- The normal proposal card no longer displays confidence, goal fields, suggested-rule arrays, design reasoning, or technical balance data. Those values remain internal inputs to ChallengeSpec generation and validation.
+- AI proposal output now includes a structured `penaltyRewardRatio` (penalty strength divided by reward strength, range 0-3). The normal UI presents it as a simple `Reward 1 : Penalty X` slider plus a plain-language risk label.
+- Moving the ratio slider does not mutate rules. The player explicitly asks AI to revise the proposal to that ratio; ChallengeSpec generation and Validator still remain authoritative.
+- Proposal choices now come only from the real AI `actionSuggestions` (maximum three) and route back through proposal analysis. Removed the extra fixed proposal-action row from the normal UI.
+- The generated challenge preview and modification proposal now each lead with one human-readable sentence. Detailed rule and balance information remains available under Advanced/Developer views, and the final modification Diff remains mandatory.
+- Updated the real-provider prompts and strict proposal schema; updated EditMode compile coverage for the new ratio field.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with exit code 0. `git diff --check` passes. Unity and tests were not run.
+
+### Manual Unity verification for proposal correction
+1. Enter an imprecise idea such as `我想越打越爽` and confirm the visible proposal is one clear sentence, not a field list.
+2. Confirm no Confidence, SuggestedRules, RewardScore, DSL field, or Validator diagnostic appears in the normal proposal card.
+3. Confirm at most three AI-generated direction buttons appear and selecting one asks the real AI to revise the proposal.
+4. Move the reward/risk slider, click the ratio update action, and confirm the returned sentence and later generated ChallengeSpec reflect that requested ratio.
+5. Generate and modify the challenge; confirm the normal preview remains concise, the final Diff still appears before Apply, and detailed values remain editable under Advanced.
+
+## 2026-09-08 - AI provider identity and connection verification
+
+- Fixed the misleading state where any non-empty `OPENAI_API_KEY` was displayed as an active OpenAI connection even when the key belonged to DeepSeek. Configuration presence and verified connectivity are now separate states: Not Configured, Unverified, Verifying, Verified, and Failed.
+- Added explicit local provider configuration for OpenAI, DeepSeek, and a custom compatible API. Keys are stored separately per selected provider, so switching providers cannot silently reuse another provider's saved key.
+- OpenAI uses `OPENAI_API_KEY`; DeepSeek uses `DEEPSEEK_API_KEY`; custom compatible endpoints use `RULEFORGE_AI_API_KEY`. The in-game password field stores a key for the currently selected provider only.
+- Added explicit protocol selection for custom endpoints: Responses or Chat Completions. Custom endpoints must provide the selected OpenAI-compatible protocol and structured JSON; API keys are never guessed from their text.
+- DeepSeek uses its official Responses endpoint and current documented default model. Its request omits OpenAI-only strict/store request fields not listed by the DeepSeek Responses contract.
+- Added a real `Verify Connection` action. It performs a minimal structured-output request against the selected endpoint/model/key. HTTP, authentication, model, protocol, or response-shape failures display Failed; only a successful compatible response displays Verified. A successful normal Generate/Modify request also marks the connection Verified.
+- The previous `Validation: PASS` remains exclusively ChallengeSpec/Validator status and no longer implies that the AI provider is connected.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with exit code 0. `git diff --check` passes. Unity, PlayMode, and tests were not run.
+
+### Manual Unity verification for provider detection
+
+1. Open Creator > Developer View, select DeepSeek, keep the default documented model, and apply the provider configuration.
+2. Enter the DeepSeek key in the password field (or launch with `DEEPSEEK_API_KEY`), then verify the real connection. Confirm status changes from Unverified to Verified only after the request succeeds.
+3. Deliberately use an invalid key or model and confirm the status becomes Failed with the provider's real error instead of showing `Real AI Provider Active`.
+4. Select Custom, test both protocol choices with a compatible endpoint, and confirm an incompatible endpoint/protocol fails validation rather than being accepted from a non-empty key.
+5. Generate one proposal after successful verification and confirm the existing Proposal -> ChallengeSpec -> Validator flow still works.
+
+## 2026-09-08 - Spawning, analytics, tests, and UI responsibility pass
+
+- Confirmed `EnemySpawner` previously launched one coroutine per death but let the first completed coroutine call `FillMissingEnemies()` for every empty slot. Pending deaths now reserve their own population slots, so each death contributes exactly one independently delayed replacement.
+- Challenge reset now invalidates/stops all old respawn coroutines and clears the pending counter before starting a fresh preparation cycle. Preparation still gates initial population, while pressure-tier increases can fill only genuinely new capacity beyond alive plus pending enemies.
+- Replaced the old Arena-dependent Milestone 1 respawn test assumptions with isolated spawner fixtures and behavior-based waits. Added coverage for preparation gating, two consecutive deaths with distinct independent delays, and restart clearing old timers. The existing hitscan damage test remains.
+- `AnalyticsStorage` now incrementally updates the persisted summary after an append instead of rereading both complete JSONL logs. Latest matching AI-attempt status is held in an in-memory index built once. Explicit rebuild remains the recovery path, and existing JSONL/CSV formats, benchmark eligibility, mock exclusion, and aggregation formulas are unchanged.
+- `AnalyticsRecorder.RefreshSummary()` now reads the cached/persisted summary and no longer causes a second full rebuild after each append.
+- Began low-risk UI decomposition without changing serialized component references: Provider/key/connection rendering and state moved to `AIProviderSetupView`; manual rule draft conversion moved to `ChallengeCreatorDrafts`; display-settings rendering/state/application moved out of `GameplayHud` to `DisplaySettingsController`.
+- `git diff --check` passes. Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with Roslyn exit code 0. Unity Editor and PlayMode were not started, and no tests were executed.
+
+### Manual Unity verification for this pass
+
+1. Kill two enemies in quick succession (preferably types with visibly different respawn delays) and confirm the first timer restores only one slot; the second enemy returns only after its own delay.
+2. Restart while one or more respawns are pending. Confirm no enemy from the previous run appears later, the preparation phase is honored, and the fresh desired population is exact.
+3. Progress through both pressure thresholds and confirm population increases still occur without duplicating pending replacements.
+4. Open Creator Developer View and verify Provider selection, API key actions, connection verification, bilingual labels, and input locking behave as before the code split.
+5. Open Main/Pause/Result display settings and verify resolution selection, fullscreen toggle, Apply, and Return behavior.
+6. Generate a challenge, use Advanced Edit, validate it, and confirm AI output is still preview-only until the player confirms/apply flow.
+
+## 2026-09-28 - AI preview/play and Creator layout correction
+
+- Traced the reported `generated but cannot see/play` path to Creator reopening from the active Runtime challenge and overwriting an unplayed AI preview. The panel now retains unplayed previews, brings the generated one-sentence result and Play action to the top, and closes after applying/restarting so Play starts immediately.
+- Fixed provider selection priority so an unconfigured real provider is not silently masked by the always-configured Mock. The main Creator now reports the real provider's configuration error and exposes provider/key setup inline; it does not show a fake AI result.
+- Fixed the key-setup sequence: `Use API Key` first applies the currently displayed provider/model/endpoint, then stores the key for that provider. Connection verification is disabled until the displayed configuration matches the active one. Key status includes provider-specific environment variables and explains session-only versus remembered keys.
+- Saved models are now provider-specific, with legacy setting migration. The DeepSeek default is updated to `deepseek-flash`; previously saved `deepseek-v4-flash` defaults normalize to it. A real connection still requires user verification in Unity; no API request was executed in this pass.
+- Applied the existing SpriteCook UI-kit workflow instructions to the Creator design review. The account has only 2 credits, so no generated kit was attempted or imported. Code-only visual changes use the existing project palette: quieter secondary actions, distinct green Play CTA, clearer input/proposal/preview hierarchy, stage labels, more reliable window positioning, and a main-flow AI configuration entry.
+- At the user's request, switched to the built-in imagegen skill for one production UI bitmap. Generated and inspected a text-free transparent sci-fi window frame, saved it at `Assets/RuleForge/Resources/UI/CreatorPanelFrame.png`, and wired it into a Creator-only 9-slice window style. All controls/text remain live Unity GUI, and the theme falls back to its normal panel if the resource is unavailable.
+- Static Roslyn compilation passed for Runtime, Editor, EditMode-test, and PlayMode-test assemblies (exit code 0); `git diff --check` passed. Unity Editor, PlayMode, live AI requests, and automated tests were not run.
+
+### Manual Unity verification requested
+
+1. Select DeepSeek in Creator, enter the key, choose whether to remember it, verify the real connection, then generate an idea. Confirm the status names DeepSeek rather than Mock/OpenAI.
+2. Confirm the AI proposal appears, `Generate This` produces a visible one-sentence preview at the top, and `开始这个玩法` immediately starts that exact challenge without another F2 step.
+3. Close/reopen Creator before playing and confirm the unplayed preview remains. Reopen after playing and confirm the active challenge loads.
+4. Start a new Play session after using a non-remembered key; confirm the UI explicitly asks for the key again. A remembered key or `DEEPSEEK_API_KEY` should remain available for the selected provider.
+5. Check Creator at 1280x720 and 1920x1080 in Chinese and English for clipping, button hierarchy, provider setup, and input locking.
+6. Confirm the new cyan sci-fi panel frame appears behind Creator without covering the header, input, proposal, preview, or scroll controls. Check that it remains legible at different Game-view aspect ratios.
+
+### 2026-09-28 - Follow-up from Unity screenshots
+- User screenshots at a short Game-view height showed the generated frame overlapping the Creator header and bottom controls. The previous `BeginArea` style did not provide a safe viewport for its scroll content.
+- Creator now draws the decorative frame separately and places the scrollable content in an explicit inset rectangle. At Game views shorter than 700 px or narrower than 960 px it uses the plain dark panel, avoiding a cramped frame.
+- The original `RULE EXPRESSION SHOWCASE` active challenge is no longer presented as an AI-generated result before the player generates anything. A generated challenge still appears at the top with its Play action.
+- Four assemblies pass static Roslyn compilation. Unity/PlayMode was not run; user should recheck the layout at the screenshot resolution and at 1280x720 or larger.
+
+### 2026-09-28 - DeepSeek returned no structured text
+- User supplied a Creator screenshot with `Responses API did not contain structured output text.` This shows an HTTP-success response reached the parser, but the previous code did not identify whether it was incomplete, failed, reasoning-only, or a different text shape.
+- For DeepSeek structured requests, explicitly set `reasoning.effort=none` so the model's default reasoning cannot consume the 4096-token output budget before emitting the required JSON. This follows the current DeepSeek Responses API contract.
+- Response parsing now surfaces `status=failed` and `status=incomplete` (including max-output-token exhaustion), accepts normal message `output_text` and an optional top-level `output_text`, and gives a safe status/output-type diagnostic rather than the old generic missing-text error. No raw response body or API key is logged.
+- Added EditMode regression cases for message text after a reasoning item, token-limit incompletion, provider failure, and top-level text. The tests were compiled, not executed.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with exit code 0. Live DeepSeek request and Unity PlayMode remain for user verification.
+
+### 2026-09-28 - Creator proposal overflow follow-up
+- User confirmed the supported 60-second kill-growth prompt now returns a real AI proposal. The proposal is not yet a playable ChallengeSpec until the player confirms `按这个方案生成`; no fixed template was loaded.
+- The real AI suggestion strings were displayed in one horizontal GUILayout row, causing the screenshot's horizontal scrollbar and clipped Chinese text. Suggestions now render as wrapped full-width rows, and the reward/risk label is a single readable line.
+- The generated decorative frame occupied almost the whole Game view and combined the revision input, proposal, and secondary controls into one scrolling page. Normal Creator now uses a compact 900x640 maximum dark panel with no scroll view; proposal review and one-sentence proposal revision are separate views. Advanced/Developer/API setup retain scrolling when opened because those are long secondary tools. The imagegen frame asset remains in the project but is no longer displayed in the normal Creator.
+- Reduced the modification/revision text-area height while preserving one natural-language input per state. Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with exit code 0; Unity was not started.
+
+### 2026-09-28 - AI settings access and result rule statistics
+- User reported that disabling Creator scrolling trapped the AI configuration action below the visible Game view. Corrected this regression: Creator is now capped at 820x520, with a fixed header button to open/leave a dedicated AI Settings page. The body always supports vertical scrolling; horizontal scrollbar is disabled and x scroll is reset. Removed duplicate embedded API setup from the main and Developer views.
+- Result overview now reports the actual last PlayerHit source and applied damage when defeat follows a direct hit; otherwise it explicitly says no direct damage was recorded. It also shows progress, hits/headshots/damage, total RuleEngine trigger events, and the top two triggered rule-effect groups.
+- Added a `规则统计` toggle in the result menu. It lists every triggered rule by localized effect names and actual trigger count, paginated three at a time without a result-screen scrollbar. Restart clears per-run rule counts and death-cause state.
+- Runtime, Editor, EditMode-test, and PlayMode-test assemblies statically compile with exit code 0. Unity and PlayMode were not started.
+
+### Manual Unity verification for this correction
+1. Open Creator at the user's narrow Game-view size. Confirm the top `配置 AI` button remains visible, opens the DeepSeek key/model/verification page, can scroll to the bottom, and `返回创建` returns with the original prompt intact.
+2. Trigger at least two different rules several times, then die to a visible enemy. The result overview should show the last direct damage source/amount and real total triggers; `规则统计` should show each rule's count and page controls if there are more than three.
+3. Restart and end another run; counts and death cause must reset rather than carry over.
+
+### 2026-09-28 - Timed objectives and AI repair follow-up
+- The user's screenshots showed a real repair rejection (`PlayerDamageFromMissingHealth` value `-0.9` outside its trusted range and two effect identity mismatches). These were Validator failures, not Unity compilation failures. The provider's first repair could still return an invalid ChallengeSpec.
+- Added one bounded second AI repair attempt using the first repair's actual Validator errors. No invalid result is applied. Generation and repair instructions now put the catalog identity and allowed value range beside each effect and explicitly disallow disguising unsupported mechanics as different ones.
+- Creator shows a short localized message when AI repair still fails. The detailed Validator error can be expanded in the proposal view and remains visible in Developer View.
+- Implemented one reusable new mechanic for the screenshot's actual intent: a KillCount or Score objective may have a separate `timeLimit`; reaching zero is defeat. Trusted `AddTime` effects can add 0.1–10 seconds to the remaining countdown on a rule event, capped at 300 seconds remaining. Existing challenges deserialize with `timeLimit=0` and keep their previous behavior. Timed objectives show remaining seconds in goal progress and distinguish timeout from damage in defeat results.
+- `AddTime` is wired into the trusted EffectCatalog, GameplayBalanceConfig, RuleEngine executor, Validator, AI vocabulary/schema, Creator summary/advanced edit, ChallengePatch, HUD feedback, and localization. Proposal guidance explains that adding time to a `Survive` target would lengthen the challenge rather than grant life. Unsupported proposals cannot be confirmed merely because `canGenerate` is true if `withinVocabulary` is false.
+- Added EditMode tests for legal timed kill-to-add-time, missing timer/out-of-range rejection, and time-limit-only patch preservation. Four assemblies pass static Roslyn compilation; `git diff --check` passes. No Unity Editor, PlayMode, API request, or automated test was run. No commit or push.
+
+### Manual Unity verification for timed objectives
+1. With a real configured AI provider, enter: `我只有10秒，每击杀一个敌人增加1秒；在倒计时结束前击杀10人。` Confirm the proposal describes a timed kill target (not a Survive target), Generate reaches a validated preview, and Play starts only after confirmation.
+2. In Play, confirm the remaining time decreases, a kill increases it by one second, ten kills win, and timeout loses with the timeout reason. Restart must restore the original 10 seconds.
+3. Try a request for an effect outside the catalog. Confirm the proposal says it is unsupported rather than loading an unrelated fixed challenge. If a generated repair still fails, confirm a short Chinese message and expandable technical details; the current challenge must remain unchanged.
+
+### 2026-09-29 - Open supported gameplay parameters
+- The user clarified that the request is not only for kill-to-add-time; existing legal gameplay parameters should be open to AI and Advanced Edit. Audit found that the manual editor could display preexisting scaling but could not enable it, switch stack mode, select scaling source, or edit scaling source bounds. It also incorrectly treated all scaling effect endpoints as percentages even for non-percent operations.
+- Advanced Edit now supports toggling scaling on any trusted StatModifier, selecting `EventValue` or `PlayerMissingHPPercent`, editing source/effect min/max, switching None/Stack, max stacks, duration, and existing trigger/condition/probability/effect value/goal/weapon/time limit/reward-risk controls. Non-stat instant actions no longer show misleading stack/duration fields.
+- The AI vocabulary previously listed every RuntimeStatId as `Allowed Stats` despite most lacking an EffectCatalog mapping, contributing to invalid effect identities. It now says these are runtime names only; an effect is legal only when a trusted catalog row exists. Each effect row includes its default and allowed value range.
+- Enabled the two existing missing-health scaling effects in manual Creator selection. Added six bounded, trusted stat effects consumed by current runtime systems: player maximum health increase/decrease, jump height, weapon range, magazine capacity, and enemy turn speed. Every new catalog entry has a matching balance limit and Chinese effect label. Internal camera/movement implementation knobs and stats without dependable live consumption remain intentionally unavailable as generated rules.
+- `AddTime` now explicitly rejects Stack mode because this instant action would otherwise ignore MaxStacks. Catalog IDs and balance-limit IDs match exactly. Static Roslyn compilation passed for Runtime, Editor, EditMode-test, and PlayMode-test assemblies; `git diff --check` passed. No Unity Editor, PlayMode, or live AI request was run. No commit/push.
+- Follow-up static audit: the advanced editor now hides a fixed SpawnEnemy value by effect kind rather than hard-coded enemy IDs. Validator rejects EventValue scaling on triggers that carry no numeric value, preventing a visible control from silently producing a meaningless rule. Added an EditMode regression case; all four assemblies compile and `git diff --check` remains clean.
+
+### Manual Unity verification for parameter opening
+1. In Advanced Edit, select a trusted stat effect, switch None/Stack, change max stacks and duration, then enable scaling. Confirm source and effect endpoint fields appear, values survive Validate/Preview, and switching source works.
+2. Test a non-percent scaling value (such as a future AddFlat catalog effect) before relying on it in a shipped challenge; only static conversion logic was checked here.
+3. Generate three distinct prompts using player max-health tradeoff, jump-height bonus, and magazine capacity, confirming the AI selects actual catalog effect IDs and Validator passes. Confirm magazine capacity changes the next reload rather than pretending to refill immediately.
+
+### 2026-09-29 - Repair confirmation visibility, AI prose language, compact HUD
+- Fixed Creator view priority: a Validator-passing repaired AI generation is shown before the original gameplay proposal. Previously `gameplayProposal` remained set, so its branch hid `pendingGenerationRepair` and kept showing the old Generate button. The repair page now says first result failed, repaired result passed, and requires explicit player acceptance; original errors are expandable. `继续调整` opens the one-sentence refinement input.
+- Every structured AI request now includes a UI-language instruction for all player-facing prose while preserving schema keys and gameplay identifiers. Existing model output is not retroactively translated; generate a new proposal to check it.
+- Removed duplicate weapon text from the left HUD goal card, separated timed-goal countdown from goal progress, placed rule-trigger feedback below the top cards, limited the immediate overlay to two effects plus a remainder count, and compacted the lower-left runtime state.
+- Static Roslyn compilation succeeded for Runtime, Editor, EditModeTests, and PlayModeTests; `git diff --check` passed. Unity, PlayMode, live provider calls, and visual review were not run. No commit/push.
+
+### Manual Unity verification for this fix
+1. Recreate an AI proposal whose first ChallengeSpec is rejected but repaired successfully. Confirm the Creator shows `已有可用的修正版` and `使用修正版`, not the old proposal Generate button. Confirm Play is available only after accepting and validating the repair.
+2. Regenerate under Chinese UI and check summary, warnings, and suggestion buttons for Chinese output. Switch to English UI and generate again to check English output; a previously generated proposal retains its original text.
+3. At a 1104x600 Game view, confirm goal/health, ammo, rule-trigger message, and lower-left runtime state do not overlap during a timed challenge with several simultaneous rule effects.
+
+### 2026-09-29 - Prevent semantically wrong AI generation repair
+- User reported that a 10-second kill-to-extend-life request had been transformed into a timed 10-kill challenge with GiveAmmo +10 and enemy speed growth, omitting AddTime. Root cause: Validator checks legality, not whether generated/repaired rules preserve a confirmed proposal. The repair loop accepted any Validator-valid ChallengeSpec, including one that replaced the core mechanic.
+- GameplayProposal now carries a structured intent contract: required goal type, countdown, and indispensable trigger/effect/value tuples. Analysis and generation prompts must populate and honor it; GenerateRoutine and RepairRoutine reject results that omit or change these requirements. A second repair attempt can receive the intent-mismatch reason, but an off-intent result cannot become a playable preview. UI reports a concise localized mismatch instead of implying Validator approved the player's requested mechanic.
+- Added static EditMode regression cases for swapping AddTime to GiveAmmo, moving AddTime to the wrong trigger, changing +1 second to +2, and changing the 10-second starting clock. All four assemblies pass static Roslyn compilation; Unity tests, live AI calls, and gameplay were not run. No commit/push.
+- Open product question sent to user: whether time replaces health entirely and how enemy attacks should affect the countdown. Existing timed-goal mechanic still has ordinary PlayerHealth until that behavior is specified; do not claim otherwise.

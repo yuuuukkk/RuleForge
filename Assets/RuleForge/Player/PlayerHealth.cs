@@ -1,6 +1,7 @@
 using System;
 using RuleForge.Runtime;
 using RuleForge.Rules;
+using RuleForge.Runtime.Services;
 using UnityEngine;
 
 namespace RuleForge.Player
@@ -18,6 +19,8 @@ namespace RuleForge.Player
         [SerializeField] private float currentHealth;
 
         private float nextDamageAllowedAt;
+        private TimeRuntimeService timeHealthService;
+        private float timeDamageScale;
 
         public event Action<float, float> HealthChanged;
 
@@ -31,11 +34,26 @@ namespace RuleForge.Player
             ? RuntimeStats.MaxHealthStat.FinalValue
             : 0f;
 
-        public bool IsAlive => CurrentHealth > 0f;
+        public bool IsAlive => UsesTimeAsHealth
+            ? timeHealthService.RemainingSeconds > 0f
+            : CurrentHealth > 0f;
 
         public float DamageProtectionRemaining => Mathf.Max(
             0f,
             nextDamageAllowedAt - Time.time);
+        public bool UsesTimeAsHealth => timeHealthService != null &&
+                                        timeDamageScale > 0f;
+        public float TimeDamageScale => timeDamageScale;
+
+        public void ConfigureTimeHealth(
+            TimeRuntimeService service,
+            float secondsPerDamagePoint)
+        {
+            timeHealthService = service;
+            timeDamageScale = service != null
+                ? Mathf.Max(0f, secondsPerDamagePoint)
+                : 0f;
+        }
 
         private void Awake()
         {
@@ -69,6 +87,25 @@ namespace RuleForge.Player
             }
 
             nextDamageAllowedAt = Time.time + hitInvulnerabilityDuration;
+            if (UsesTimeAsHealth)
+            {
+                float secondsLost = timeHealthService.RemoveCountdownSeconds(
+                    damageInfo.Amount * timeDamageScale);
+                if (secondsLost <= 0f)
+                {
+                    return;
+                }
+
+                Damaged?.Invoke(damageInfo);
+                GameplayEventBus.Publish(new GameplayEvent(
+                    GameplayEventType.PlayerHit,
+                    gameObject,
+                    damageInfo.Source,
+                    value: damageInfo.Amount));
+                PublishHealthChanged(damageInfo.Source);
+                return;
+            }
+
             float healthBefore = CurrentHealth;
             currentHealth = Mathf.Max(0f, CurrentHealth - damageInfo.Amount);
             float appliedDamage = healthBefore - CurrentHealth;
@@ -102,9 +139,14 @@ namespace RuleForge.Player
             PublishHealthChanged();
         }
 
-        private float HealthPercent => MaxHealth > 0f
-            ? Mathf.Clamp01(CurrentHealth / MaxHealth)
-            : 0f;
+        private float HealthPercent => UsesTimeAsHealth
+            ? timeHealthService.InitialCountdownSeconds > 0f
+                ? Mathf.Clamp01(timeHealthService.RemainingSeconds /
+                                timeHealthService.InitialCountdownSeconds)
+                : 0f
+            : MaxHealth > 0f
+                ? Mathf.Clamp01(CurrentHealth / MaxHealth)
+                : 0f;
 
         private void PublishHealthChanged(GameObject instigator = null)
         {

@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using RuleForge.AI;
 using RuleForge.DSL;
@@ -7,6 +8,76 @@ namespace RuleForge.Tests.EditMode
 {
     public sealed class AIGameplayTests
     {
+        [Test]
+        public void ResponsesParser_ReadsStructuredTextAfterReasoningItem()
+        {
+            object[] arguments = ReadResponses(
+                "{\"status\":\"completed\",\"output\":[" +
+                "{\"type\":\"reasoning\",\"content\":[]}," +
+                "{\"type\":\"message\",\"content\":[" +
+                "{\"type\":\"output_text\",\"text\":\"{\\\"ok\\\":true}\"}]}]}");
+
+            Assert.That(arguments[0], Is.True);
+            Assert.That(arguments[1], Is.EqualTo("{\"ok\":true}"));
+        }
+
+        [Test]
+        public void ResponsesParser_ExplainsTokenLimitInsteadOfGenericMissingText()
+        {
+            object[] arguments = ReadResponses(
+                "{\"status\":\"incomplete\"," +
+                "\"incomplete_details\":{\"reason\":\"max_output_tokens\"}," +
+                "\"output\":[{\"type\":\"reasoning\",\"content\":[]}]}");
+
+            Assert.That(arguments[0], Is.False);
+            StringAssert.Contains("maxOutputTokens", (string)arguments[2]);
+        }
+
+        [Test]
+        public void ResponsesParser_AcceptsTopLevelOutputTextWhenProvided()
+        {
+            object[] arguments = ReadResponses(
+                "{\"status\":\"completed\"," +
+                "\"output_text\":\"{\\\"ok\\\":true}\",\"output\":[]}");
+
+            Assert.That(arguments[0], Is.True);
+            Assert.That(arguments[1], Is.EqualTo("{\"ok\":true}"));
+        }
+
+        [Test]
+        public void ResponsesParser_SurfacesProviderFailureMessage()
+        {
+            object[] arguments = ReadResponses(
+                "{\"status\":\"failed\"," +
+                "\"error\":{\"message\":\"provider failure\"}," +
+                "\"output\":[]}");
+
+            Assert.That(arguments[0], Is.False);
+            Assert.That(arguments[2], Is.EqualTo("provider failure"));
+        }
+
+        private static object[] ReadResponses(string json)
+        {
+            MethodInfo reader = typeof(OpenAIResponsesGameplayService)
+                .GetMethod("TryReadOutputText",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(reader, Is.Not.Null);
+            object[] parameters =
+            {
+                json,
+                RuntimeAIProtocol.Responses,
+                null,
+                null
+            };
+            bool success = (bool)reader.Invoke(null, parameters);
+            return new object[]
+            {
+                success,
+                parameters[2],
+                parameters[3]
+            };
+        }
+
         [Test]
         public void GameplayProposal_ParsesCompletenessAndPlayerFacingAdvice()
         {
@@ -21,12 +92,14 @@ namespace RuleForge.Tests.EditMode
                 "\"designReasoningSummary\":\"Adds controlled growth\"," +
                 "\"warnings\":[\"No risk requested\"]," +
                 "\"clarificationQuestion\":\"\",\"canGenerate\":true," +
+                "\"penaltyRewardRatio\":1.5," +
                 "\"actionSuggestions\":[\"Add a faster-growing risk\"]}");
 
             Assert.That(proposal.ConfidenceLevel,
                 Is.EqualTo(GameplayProposalConfidence.Medium));
             Assert.That(proposal.GoalExplicit, Is.False);
             Assert.That(proposal.CanGenerate, Is.True);
+            Assert.That(proposal.PenaltyRewardRatio, Is.EqualTo(1.5f));
             Assert.That(proposal.Warnings, Has.Length.EqualTo(1));
         }
 
@@ -41,10 +114,197 @@ namespace RuleForge.Tests.EditMode
             StringAssert.Contains("\"additionalProperties\":false", proposal);
             StringAssert.Contains("\"clarificationQuestion\"", proposal);
             StringAssert.Contains("\"canGenerate\"", proposal);
+            StringAssert.Contains("\"penaltyRewardRatio\"", proposal);
+            StringAssert.Contains("\"exactMaxStacks\"", proposal);
             StringAssert.Contains("\"patchInstruction\"", modification);
             StringAssert.DoesNotContain("\"operations\"", modification);
             StringAssert.Contains("\"maxItems\":3", improvements);
             StringAssert.Contains("\"intent\"", improvements);
+        }
+
+        [Test]
+        public void IntentContract_RejectsAmmoSubstitutedForKillToAddTime()
+        {
+            GameplayProposal proposal = CreateTimedKillProposal();
+            ChallengeSpec wrong = CreateTimedKillChallenge("GiveAmmo", 10f);
+
+            bool matches = ChallengeIntentContract.TryValidate(
+                proposal, wrong, out string error);
+
+            Assert.That(matches, Is.False);
+            StringAssert.Contains("AddTime", error);
+        }
+
+        [Test]
+        public void IntentContract_RejectsTimeRewardOnWrongTrigger()
+        {
+            GameplayProposal proposal = CreateTimedKillProposal();
+            ChallengeSpec wrongTrigger = ChallengeSpec.Create(
+                "timed-kill", "Timed Kill", "KillCount", 10f,
+                "Assault Rifle",
+                new[]
+                {
+                    GameplayRule.Create("reload-time", "WeaponReloaded",
+                        System.Array.Empty<RuleCondition>(),
+                        new[]
+                        {
+                            RuleEffect.Create("AddTime", "AddTime", "Time",
+                                "", "AddFlat", 1f, "", "None", 0, 0f)
+                        })
+                }, 10f);
+
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrongTrigger, out _), Is.False);
+        }
+
+        [Test]
+        public void IntentContract_RequiresExactTimeRewardAndStartingClock()
+        {
+            GameplayProposal proposal = CreateTimedKillProposal();
+            ChallengeSpec wrongReward =
+                CreateTimedKillChallenge("AddTime", 2f);
+            ChallengeSpec wrongClock =
+                CreateTimedKillChallenge("AddTime", 1f, 20f);
+
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrongReward, out _), Is.False);
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrongClock, out _), Is.False);
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, CreateTimedKillChallenge("AddTime", 1f), out _),
+                Is.True);
+        }
+
+        [Test]
+        public void IntentContract_RejectsInventedVictoryTargetAndExtraRisk()
+        {
+            GameplayProposal proposal = CreateTimedKillProposal();
+            ChallengeSpec wrongTarget = ChallengeSpec.Create(
+                "timed-kill", "Timed Kill", "KillCount", 30f,
+                "Assault Rifle",
+                CreateTimedKillChallenge("AddTime", 1f).Rules,
+                10f);
+            ChallengeSpec extraRisk = ChallengeSpec.Create(
+                "timed-kill", "Timed Kill", "KillCount", 10f,
+                "Assault Rifle",
+                new[]
+                {
+                    CreateTimedKillChallenge("AddTime", 1f).Rules[0],
+                    GameplayRule.Create("extra-risk", "EnemyKilled",
+                        System.Array.Empty<RuleCondition>(),
+                        new[]
+                        {
+                            RuleEffect.Create("EnemySpeed", "StatModifier",
+                                "Enemy", "EnemyMoveSpeed", "AddPercent",
+                                0.05f, "", "Stack", 20, 0f)
+                        })
+                }, 10f);
+
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrongTarget, out _), Is.False);
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, extraRisk, out _), Is.False);
+        }
+
+        [Test]
+        public void IntentContract_TimeBankEndlessRequiresTimeDamageConversion()
+        {
+            GameplayProposal proposal = JsonUtility.FromJson<GameplayProposal>(
+                "{\"requiredGoalType\":\"TimeBankEndless\"," +
+                "\"requiredGoalTarget\":0," +
+                "\"requiredTimeLimitSeconds\":10," +
+                "\"requiredTimeDamageScale\":0.1," +
+                "\"suggestedRules\":[\"每次击杀加一秒\"]," +
+                "\"requiredMechanics\":[{\"trigger\":\"EnemyKilled\"," +
+                "\"effectId\":\"AddTime\",\"value\":1," +
+                "\"exactValue\":true}]}" );
+            GameplayRule[] rules = CreateTimedKillChallenge("AddTime", 1f).Rules;
+            ChallengeSpec correct = ChallengeSpec.Create(
+                "time_trial", "Time Trial", "TimeBankEndless", 0f,
+                "Assault Rifle", rules, 10f, 0.1f);
+            ChallengeSpec wrong = ChallengeSpec.Create(
+                "time_trial", "Time Trial", "TimeBankEndless", 0f,
+                "Assault Rifle", rules, 10f, 0.2f);
+
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, correct, out _), Is.True);
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrong, out _), Is.False);
+        }
+
+        [Test]
+        public void IntentContract_RejectsChangingExplicitTenStackLimit()
+        {
+            GameplayProposal proposal = JsonUtility.FromJson<GameplayProposal>(
+                "{\"requiredGoalType\":\"Survive\"," +
+                "\"requiredGoalTarget\":60," +
+                "\"requiredTimeLimitSeconds\":0," +
+                "\"requiredMechanics\":[{\"trigger\":\"EnemyKilled\"," +
+                "\"effectId\":\"PlayerDamage\",\"value\":0.05," +
+                "\"exactValue\":true,\"maxStacks\":10," +
+                "\"exactMaxStacks\":true}]}" );
+            GameplayRule tenStacks = GameplayRule.Create(
+                "damage", "EnemyKilled", System.Array.Empty<RuleCondition>(),
+                new[]
+                {
+                    RuleEffect.Create("PlayerDamage", "StatModifier",
+                        "Weapon", "WeaponDamage", "AddPercent", 0.05f,
+                        "", "Stack", 10, 0f)
+                });
+            GameplayRule threeStacks = GameplayRule.Create(
+                "damage", "EnemyKilled", System.Array.Empty<RuleCondition>(),
+                new[]
+                {
+                    RuleEffect.Create("PlayerDamage", "StatModifier",
+                        "Weapon", "WeaponDamage", "AddPercent", 0.05f,
+                        "", "Stack", 3, 0f)
+                });
+            ChallengeSpec correct = ChallengeSpec.Create(
+                "survive", "Survive", "Survive", 60f,
+                "Assault Rifle", new[] { tenStacks });
+            ChallengeSpec wrong = ChallengeSpec.Create(
+                "survive", "Survive", "Survive", 60f,
+                "Assault Rifle", new[] { threeStacks });
+
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, correct, out _), Is.True);
+            Assert.That(ChallengeIntentContract.TryValidate(
+                proposal, wrong, out _), Is.False);
+        }
+
+        private static GameplayProposal CreateTimedKillProposal()
+        {
+            return JsonUtility.FromJson<GameplayProposal>(
+                "{\"suggestedRules\":[\"每击杀一名敌人加一秒\"]," +
+                "\"requiredGoalType\":\"KillCount\"," +
+                "\"requiredGoalTarget\":10," +
+                "\"requiredTimeLimitSeconds\":10," +
+                "\"requiredMechanics\":[{" +
+                "\"trigger\":\"EnemyKilled\"," +
+                "\"effectId\":\"AddTime\"," +
+                "\"value\":1,\"exactValue\":true}]}" );
+        }
+
+        private static ChallengeSpec CreateTimedKillChallenge(
+            string effectId,
+            float effectValue,
+            float timeLimit = 10f)
+        {
+            return ChallengeSpec.Create(
+                "timed-kill", "Timed Kill", "KillCount", 10f,
+                "Assault Rifle",
+                new[]
+                {
+                    GameplayRule.Create("kill-time", "EnemyKilled",
+                        System.Array.Empty<RuleCondition>(),
+                        new[]
+                        {
+                            RuleEffect.Create(effectId, "AddTime", "Time",
+                                "", "AddFlat", effectValue, "", "None",
+                                0, 0f)
+                        })
+                },
+                timeLimit);
         }
 
         [Test]

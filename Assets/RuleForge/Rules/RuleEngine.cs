@@ -80,7 +80,8 @@ namespace RuleForge.Rules
                 playerService,
                 enemyService,
                 weaponService,
-                spawnService);
+                spawnService,
+                timeService);
 
             if (challengeJson != null)
             {
@@ -819,14 +820,16 @@ namespace RuleForge.Rules
     {
         Player,
         Enemy,
-        Weapon
+        Weapon,
+        Time
     }
 
     public enum RuleEffectKind
     {
         StatModifier,
         SpawnEnemy,
-        GiveAmmo
+        GiveAmmo,
+        AddTime
     }
 
     public enum RuleConditionType
@@ -1085,17 +1088,20 @@ namespace RuleForge.Rules
         private readonly EnemyRuntimeService enemyService;
         private readonly WeaponRuntimeService weaponService;
         private readonly SpawnRuntimeService spawnService;
+        private readonly TimeRuntimeService timeService;
 
         public EffectExecutor(
             PlayerRuntimeService player,
             EnemyRuntimeService enemy,
             WeaponRuntimeService weapon,
-            SpawnRuntimeService spawn)
+            SpawnRuntimeService spawn,
+            TimeRuntimeService time)
         {
             playerService = player;
             enemyService = enemy;
             weaponService = weapon;
             spawnService = spawn;
+            timeService = time;
         }
 
         public bool IsInstantAction(RuleEffect effect)
@@ -1134,6 +1140,9 @@ namespace RuleForge.Rules
                 case RuleEffectKind.GiveAmmo:
                     return weaponService != null &&
                            weaponService.GiveAmmo(appliedValue);
+                case RuleEffectKind.AddTime:
+                    return timeService != null &&
+                           timeService.AddCountdownSeconds(appliedValue);
                 default:
                     return false;
             }

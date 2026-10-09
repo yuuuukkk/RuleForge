@@ -74,14 +74,17 @@ namespace RuleForge.Validation
                 result.AddError("ChallengeSpec.displayName is required.");
             }
 
+            bool recognizedGoal = Enum.TryParse(
+                challenge.Goal, true, out ChallengeGoalType goalType);
+            bool timeBankGoal = recognizedGoal &&
+                (goalType == ChallengeGoalType.TimeBankTarget ||
+                 goalType == ChallengeGoalType.TimeBankSurvive ||
+                 goalType == ChallengeGoalType.TimeBankEndless);
             if (string.IsNullOrWhiteSpace(challenge.Goal))
             {
                 result.AddError("ChallengeSpec.goal is required.");
             }
-            else if (!Enum.TryParse(
-                         challenge.Goal,
-                         true,
-                         out ChallengeGoalType _))
+            else if (!recognizedGoal)
             {
                 result.AddError(
                     $"ChallengeSpec.goal '{challenge.Goal}' is unknown.");
@@ -89,10 +92,55 @@ namespace RuleForge.Validation
 
             if (float.IsNaN(challenge.GoalTarget) ||
                 float.IsInfinity(challenge.GoalTarget) ||
-                challenge.GoalTarget <= 0f)
+                (goalType == ChallengeGoalType.TimeBankEndless
+                    ? challenge.GoalTarget != 0f
+                    : challenge.GoalTarget <= 0f))
             {
                 result.AddError(
-                    "ChallengeSpec.goalTarget must be a finite number greater than zero.");
+                    "ChallengeSpec.goalTarget must be positive, or 0 for TimeBankEndless.");
+            }
+            if (goalType == ChallengeGoalType.TimeBankTarget &&
+                challenge.GoalTarget > 300f)
+            {
+                result.AddError(
+                    "TimeBankTarget cannot exceed the 300-second time-bank cap.");
+            }
+            if (goalType == ChallengeGoalType.TimeBankTarget &&
+                challenge.GoalTarget <= challenge.TimeLimit)
+            {
+                result.AddError(
+                    "TimeBankTarget must exceed the starting time bank, or victory is immediate.");
+            }
+
+            if (float.IsNaN(challenge.TimeLimit) ||
+                float.IsInfinity(challenge.TimeLimit) ||
+                challenge.TimeLimit < 0f ||
+                challenge.TimeLimit > 300f)
+            {
+                result.AddError(
+                    "ChallengeSpec.timeLimit must be 0 or between 1 and 300 seconds.");
+            }
+            else if (challenge.TimeLimit > 0f &&
+                     (challenge.TimeLimit < 1f ||
+                      goalType == ChallengeGoalType.Survive))
+            {
+                result.AddError(
+                    "ChallengeSpec.timeLimit requires a timed goal and at least 1 second.");
+            }
+            if (timeBankGoal && challenge.TimeLimit < 1f)
+            {
+                result.AddError(
+                    "TimeBank goals require at least 1 second of starting time.");
+            }
+            if (float.IsNaN(challenge.TimeDamageScale) ||
+                float.IsInfinity(challenge.TimeDamageScale) ||
+                (timeBankGoal &&
+                 (challenge.TimeDamageScale < 0.01f ||
+                  challenge.TimeDamageScale > 1f)) ||
+                (!timeBankGoal && challenge.TimeDamageScale != 0f))
+            {
+                result.AddError(
+                    "ChallengeSpec.timeDamageScale must be 0.01–1 for TimeBank, or 0 for other goals.");
             }
 
             if (string.IsNullOrWhiteSpace(challenge.Weapon))
@@ -214,7 +262,24 @@ namespace RuleForge.Validation
                     hasKnownTrigger,
                     triggerType,
                     result);
-                ValidateEffects(rule, rulePath, catalog, result);
+                ValidateEffects(rule, rulePath, catalog, challenge, result);
+                if (hasKnownTrigger && !ProvidesNumericValue(triggerType))
+                {
+                    RuleEffect[] effects = rule.Effects;
+                    for (int effectIndex = 0;
+                         effectIndex < effects.Length;
+                         effectIndex++)
+                    {
+                        RuleScaling scaling = effects[effectIndex]?.Scaling;
+                        if (scaling != null && string.Equals(
+                                scaling.Source, "EventValue",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            result.AddError(
+                                $"{rulePath}.effects[{effectIndex}].scaling.source EventValue requires a numeric trigger.");
+                        }
+                    }
+                }
             }
         }
 
@@ -363,6 +428,7 @@ namespace RuleForge.Validation
             GameplayRule rule,
             string rulePath,
             EffectCatalog catalog,
+            ChallengeSpec challenge,
             ValidationResult result)
         {
             RuleEffect[] effects = rule.Effects;
@@ -398,6 +464,20 @@ namespace RuleForge.Validation
                 }
 
                 ValidateEffectKind(effect, kind, path, result);
+                if (kind == RuleEffectKind.AddTime &&
+                    challenge.TimeLimit <= 0f)
+                {
+                    result.AddError(
+                        $"{path} AddTime requires a timed goal.");
+                }
+                if (kind == RuleEffectKind.AddTime &&
+                    (!string.Equals(effect.StackMode, "None",
+                         StringComparison.OrdinalIgnoreCase) ||
+                     effect.MaxStacks != 1))
+                {
+                    result.AddError(
+                        $"{path} AddTime requires stackMode None and maxStacks 1.");
+                }
 
                 bool hasScaling = effect.Scaling != null &&
                                   !string.IsNullOrWhiteSpace(
@@ -531,6 +611,16 @@ namespace RuleForge.Validation
                             $"{path} GiveAmmo requires target Weapon.");
                     }
 
+                    break;
+                case RuleEffectKind.AddTime:
+                    if (!string.Equals(
+                            effect.Target,
+                            RuntimeServiceTarget.Time.ToString(),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.AddError(
+                            $"{path} AddTime requires target Time.");
+                    }
                     break;
             }
         }

@@ -43,7 +43,7 @@ MonoBehaviour:
     displayName: Missing-Health Damage
     polarity: 1
     balanceWeight: 12
-    creatorAvailable: 0
+    creatorAvailable: 1
     creatorKind: StatModifier
     creatorTarget: Weapon
     creatorStatId: WeaponDamage
@@ -108,7 +108,7 @@ MonoBehaviour:
     displayName: Missing-Health Move Speed
     polarity: 2
     balanceWeight: 12
-    creatorAvailable: 0
+    creatorAvailable: 1
     creatorKind: StatModifier
     creatorTarget: Player
     creatorStatId: PlayerMoveSpeed
@@ -195,3 +195,94 @@ MonoBehaviour:
     creatorStringValue:
     creatorStackMode: Stack
     creatorMaxStacks: 6
+  - effectId: AddTime
+    displayName: Extra Time
+    polarity: 1
+    balanceWeight: 10
+    creatorAvailable: 1
+    creatorKind: AddTime
+    creatorTarget: Time
+    creatorStatId:
+    creatorOperation:
+    creatorDefaultValue: 1
+    creatorStringValue:
+    creatorStackMode: None
+    creatorMaxStacks: 1
+  - effectId: PlayerMaxHealthBonus
+    displayName: Player Maximum Health Bonus
+    polarity: 1
+    balanceWeight: 9
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Player
+    creatorStatId: PlayerMaxHealth
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5
+  - effectId: PlayerMaxHealthPenalty
+    displayName: Player Maximum Health Penalty
+    polarity: 2
+    balanceWeight: 12
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Player
+    creatorStatId: PlayerMaxHealth
+    creatorOperation: AddPercent
+    creatorDefaultValue: -0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5
+  - effectId: PlayerJumpHeight
+    displayName: Jump Height
+    polarity: 1
+    balanceWeight: 7
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Player
+    creatorStatId: PlayerJumpHeight
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5
+  - effectId: WeaponRange
+    displayName: Weapon Range
+    polarity: 1
+    balanceWeight: 6
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Weapon
+    creatorStatId: WeaponRange
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5
+  - effectId: WeaponMagazineCapacity
+    displayName: Magazine Capacity
+    polarity: 1
+    balanceWeight: 8
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Weapon
+    creatorStatId: WeaponMagazineCapacity
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5
+  - effectId: EnemyTurnSpeed
+    displayName: Enemy Turn Speed
+    polarity: 2
+    balanceWeight: 7
+    creatorAvailable: 1
+    creatorKind: StatModifier
+    creatorTarget: Enemy
+    creatorStatId: EnemyTurnSpeed
+    creatorOperation: AddPercent
+    creatorDefaultValue: 0.1
+    creatorStringValue:
+    creatorStackMode: Stack
+    creatorMaxStacks: 5

@@ -2008,8 +2008,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1848d8fdb25841f096fbcc75bef5782b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  endpoint: https://api.openai.com/v1/responses
-  model: gpt-5-mini
   timeoutSeconds: 60
   maxOutputTokens: 4096
 --- !u!114 &818739395
@@ -2051,10 +2049,12 @@ MonoBehaviour:
   reticleTexture: {fileID: 2800000, guid: d2ae0c2e62bedec4d8e1cb43f2438191, type: 3}
   objectiveIconTexture: {fileID: 2800000, guid: a33c0b7faa2e35941a43019023c19033, type: 3}
   healthIconTexture: {fileID: 2800000, guid: e4bcace90ceb0474cb60ffded8d7d9ba, type: 3}
+  healthBarBackgroundTexture: {fileID: 2800000, guid: a8c462c5cc62ad94e80ea5df78e3a4a2, type: 3}
+  healthBarFillTexture: {fileID: 2800000, guid: 53680e2f61edb6e42a1aa2a4784b01b2, type: 3}
   ammoIconTexture: {fileID: 2800000, guid: f894403a925bc1d46b2937ae8746bbe4, type: 3}
-  panelTexture: {fileID: 2800000, guid: ac53f2cd644b32a4fbc072eb39ebc6de, type: 3}
-  buttonTexture: {fileID: 2800000, guid: b22378a2372c2674cb5a3b641703150f, type: 3}
-  buttonHoverTexture: {fileID: 2800000, guid: 4414f650ac1eff54c8041271047c124c, type: 3}
+  panelTexture: {fileID: 2800000, guid: 0304eff8e39eb4b42a527740db00fabb, type: 3}
+  buttonTexture: {fileID: 2800000, guid: 213d85f84f072a94da6bdcaa97fe9b61, type: 3}
+  buttonHoverTexture: {fileID: 2800000, guid: 9b78353053e2713498b292a8c0a19405, type: 3}
   dangerButtonTexture: {fileID: 2800000, guid: 7960a788a2e1984478fd14d9186c721b, type: 3}
   uiFont: {fileID: 12800000, guid: b98583bca9344e64e8c55b88b252d3db, type: 3}
   iconSize: 20

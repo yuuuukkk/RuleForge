@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text;
 using RuleForge.DSL;
 using RuleForge.Enemies;
 using RuleForge.Rules;
@@ -30,6 +31,8 @@ namespace RuleForge.UI
         [SerializeField] private Texture2D reticleTexture;
         [SerializeField] private Texture2D objectiveIconTexture;
         [SerializeField] private Texture2D healthIconTexture;
+        [SerializeField] private Texture2D healthBarBackgroundTexture;
+        [SerializeField] private Texture2D healthBarFillTexture;
         [SerializeField] private Texture2D ammoIconTexture;
         [SerializeField] private Texture2D panelTexture;
         [SerializeField] private Texture2D buttonTexture;
@@ -59,22 +62,29 @@ namespace RuleForge.UI
         private GUIStyle headshotStyle;
         private GUIStyle menuTitleStyle;
         private GUIStyle menuBodyStyle;
+        private GUIStyle resultDetailsStyle;
         private GUIStyle dangerButtonStyle;
+        private GUIStyle healthBarLabelStyle;
         private bool showStartMenu = true;
         private bool showEndMenu;
         private bool showPauseMenu;
         private bool showSettingsMenu;
+        private bool showResultRules;
+        private int resultRulesPage;
         private FlowMenuReturn settingsReturn = FlowMenuReturn.Main;
-        private Resolution[] availableResolutions = Array.Empty<Resolution>();
-        private int selectedResolutionIndex;
-        private bool selectedFullscreen;
+        private readonly DisplaySettingsController displaySettings =
+            new DisplaySettingsController();
         private bool challengeStartRequested;
         private bool creatorOpenedFromFlowMenu;
         private ChallengeGoalState endState = ChallengeGoalState.Inactive;
         private int ruleTriggerCount;
+        private readonly List<RuleRunSummary> ruleRunSummaries =
+            new List<RuleRunSummary>();
         private int hitCount;
         private int headshotCount;
         private float totalDamageDealt;
+        private float lastIncomingDamage;
+        private string defeatCause = string.Empty;
         private GameplayAudioFeedback audioFeedback;
 
         private void OnEnable()
@@ -115,8 +125,7 @@ namespace RuleForge.UI
             showEndMenu = false;
             showPauseMenu = false;
             showSettingsMenu = false;
-            selectedFullscreen = Screen.fullScreen;
-            RefreshResolutionOptions();
+            displaySettings.Refresh();
             RuntimeInputGate.SetBlocked(this, true);
         }
 
@@ -217,12 +226,16 @@ namespace RuleForge.UI
             Texture2D reticle,
             Texture2D objectiveIcon,
             Texture2D healthIcon,
+            Texture2D healthBarBackground,
+            Texture2D healthBarFill,
             Texture2D ammoIcon,
             Texture2D panel)
         {
             reticleTexture = reticle;
             objectiveIconTexture = objectiveIcon;
             healthIconTexture = healthIcon;
+            healthBarBackgroundTexture = healthBarBackground;
+            healthBarFillTexture = healthBarFill;
             ammoIconTexture = ammoIcon;
             panelTexture = panel;
         }
@@ -362,24 +375,44 @@ namespace RuleForge.UI
             }
             else
             {
+                bool endlessTrial = goalController != null &&
+                    goalController.GoalType == ChallengeGoalType.TimeBankEndless;
                 string resultTitle = endState == ChallengeGoalState.Victory
                     ? "挑战完成"
-                    : "挑战失败";
+                    : endlessTrial ? "试炼结束" : "挑战失败";
                 string resultBody = endState == ChallengeGoalState.Victory
                     ? "你已完成当前玩法。\n" + BuildResultSummary()
-                    : "你已被击败。\n" + BuildResultSummary();
+                    : endlessTrial
+                        ? "时间生命耗尽。\n" + BuildResultSummary()
+                        : "你已被击败。\n" + BuildResultSummary();
                 GUI.Label(
                     new Rect(panelRect.x + 44f, panelRect.y + 100f,
-                        panelRect.width - 88f, 42f),
+                        panelRect.width - 210f, 42f),
                     resultTitle,
                     resultStyle);
-                GUI.Label(
-                    new Rect(panelRect.x + 44f, panelRect.y + 146f,
-                        panelRect.width - 88f, 132f),
-                    resultBody,
-                    menuBodyStyle);
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 292f,
+                        new Rect(panelRect.x + panelRect.width - 160f,
+                            panelRect.y + 104f, 116f, 32f),
+                        showResultRules ? "返回概览" : "规则统计",
+                        GUI.skin.button))
+                {
+                    showResultRules = !showResultRules;
+                    resultRulesPage = 0;
+                }
+                if (showResultRules)
+                {
+                    DrawResultRuleStats(panelRect);
+                }
+                else
+                {
+                    GUI.Label(
+                        new Rect(panelRect.x + 44f, panelRect.y + 143f,
+                            panelRect.width - 88f, 176f),
+                        resultBody,
+                        resultDetailsStyle);
+                }
+                if (GUI.Button(
+                        new Rect(panelRect.x + 72f, panelRect.y + 326f,
                             panelRect.width - 144f, 52f),
                         "重新开始",
                         GUI.skin.button))
@@ -388,7 +421,7 @@ namespace RuleForge.UI
                 }
 
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 356f,
+                        new Rect(panelRect.x + 72f, panelRect.y + 386f,
                             panelRect.width - 144f, 48f),
                         "编辑玩法",
                         dangerButtonStyle))
@@ -397,7 +430,7 @@ namespace RuleForge.UI
                 }
 
                 if (GUI.Button(
-                        new Rect(panelRect.x + 72f, panelRect.y + 416f,
+                        new Rect(panelRect.x + 72f, panelRect.y + 446f,
                             panelRect.width - 144f, 44f),
                         "返回主菜单",
                         GUI.skin.button))
@@ -409,61 +442,10 @@ namespace RuleForge.UI
 
         private void DrawSettingsMenu(Rect panelRect)
         {
-            GUI.Label(
-                new Rect(panelRect.x + 44f, panelRect.y + 100f,
-                    panelRect.width - 88f, 46f),
-                "显示设置",
-                resultStyle);
-
-            string resolutionLabel = availableResolutions.Length > 0
-                ? availableResolutions[selectedResolutionIndex].width + " × " +
-                  availableResolutions[selectedResolutionIndex].height
-                : Screen.width + " × " + Screen.height;
-            GUI.Label(
-                new Rect(panelRect.x + 80f, panelRect.y + 168f,
-                    panelRect.width - 160f, 30f),
-                "分辨率",
-                menuBodyStyle);
-            if (GUI.Button(
-                    new Rect(panelRect.x + 80f, panelRect.y + 208f, 58f, 46f),
-                    "◀",
-                    GUI.skin.button))
-            {
-                ChangeResolutionSelection(-1);
-            }
-
-            GUI.Label(
-                new Rect(panelRect.x + 150f, panelRect.y + 211f,
-                    panelRect.width - 300f, 40f),
-                resolutionLabel,
-                resultStyle);
-            if (GUI.Button(
-                    new Rect(panelRect.xMax - 138f, panelRect.y + 208f,
-                        58f, 46f),
-                    "▶",
-                    GUI.skin.button))
-            {
-                ChangeResolutionSelection(1);
-            }
-
-            selectedFullscreen = GUI.Toggle(
-                new Rect(panelRect.x + 80f, panelRect.y + 278f,
-                    panelRect.width - 160f, 36f),
-                selectedFullscreen,
-                "全屏模式");
-            if (GUI.Button(
-                    new Rect(panelRect.x + 72f, panelRect.y + 332f,
-                        panelRect.width - 144f, 52f),
-                    "应用设置",
-                    GUI.skin.button))
-            {
-                ApplyDisplaySettings();
-            }
-
-            if (GUI.Button(
-                    new Rect(panelRect.x + 72f, panelRect.y + 402f,
-                        panelRect.width - 144f, 48f),
-                    "返回",
+            if (displaySettings.Draw(
+                    panelRect,
+                    resultStyle,
+                    menuBodyStyle,
                     dangerButtonStyle))
             {
                 ReturnFromSettings();
@@ -508,6 +490,17 @@ namespace RuleForge.UI
             }
 
             endState = state;
+            showResultRules = false;
+            resultRulesPage = 0;
+            defeatCause = state == ChallengeGoalState.Defeat
+                ? goalController != null && goalController.LastDefeatWasTimeout
+                    ? goalController.UsesTimeAsHealth
+                        ? "时间生命归零"
+                        : "倒计时归零，未在限定时间内完成目标"
+                    : lastIncomingDamage > 0f
+                    ? $"最后一击：{damageSource}，造成 {lastIncomingDamage:0.#} 点伤害"
+                    : "死亡原因：未记录到直接伤害"
+                : string.Empty;
             showStartMenu = false;
             showEndMenu = true;
             showPauseMenu = false;
@@ -522,9 +515,15 @@ namespace RuleForge.UI
                                    !creatorOpenedFromFlowMenu;
             endState = ChallengeGoalState.Inactive;
             ruleTriggerCount = 0;
+            ruleRunSummaries.Clear();
+            showResultRules = false;
+            resultRulesPage = 0;
             hitCount = 0;
             headshotCount = 0;
             totalDamageDealt = 0f;
+            lastIncomingDamage = 0f;
+            defeatCause = string.Empty;
+            damageSource = string.Empty;
             hitFeedbackEntries.Clear();
             hitMarkerExpiresAt = 0f;
             if (keepInitialMenu)
@@ -576,7 +575,7 @@ namespace RuleForge.UI
             showEndMenu = false;
             showPauseMenu = false;
             showSettingsMenu = true;
-            RefreshResolutionOptions();
+            displaySettings.Refresh();
             RuntimeInputGate.SetBlocked(this, true);
         }
 
@@ -587,81 +586,6 @@ namespace RuleForge.UI
             showPauseMenu = settingsReturn == FlowMenuReturn.Pause;
             showEndMenu = settingsReturn == FlowMenuReturn.Result;
             RuntimeInputGate.SetBlocked(this, true);
-        }
-
-        private void RefreshResolutionOptions()
-        {
-            Resolution[] supported = Screen.resolutions;
-            List<Resolution> unique = new List<Resolution>();
-            for (int index = 0; index < supported.Length; index++)
-            {
-                Resolution candidate = supported[index];
-                bool duplicate = false;
-                for (int existingIndex = 0;
-                     existingIndex < unique.Count;
-                     existingIndex++)
-                {
-                    if (unique[existingIndex].width == candidate.width &&
-                        unique[existingIndex].height == candidate.height)
-                    {
-                        duplicate = true;
-                        break;
-                    }
-                }
-
-                if (!duplicate)
-                {
-                    unique.Add(candidate);
-                }
-            }
-
-            availableResolutions = unique.ToArray();
-            selectedResolutionIndex = 0;
-            int closestDistance = int.MaxValue;
-            for (int index = 0; index < availableResolutions.Length; index++)
-            {
-                int distance = Mathf.Abs(
-                                   availableResolutions[index].width -
-                                   Screen.width) +
-                               Mathf.Abs(
-                                   availableResolutions[index].height -
-                                   Screen.height);
-                if (distance < closestDistance)
-                {
-                    closestDistance = distance;
-                    selectedResolutionIndex = index;
-                }
-            }
-
-            selectedFullscreen = Screen.fullScreen;
-        }
-
-        private void ChangeResolutionSelection(int direction)
-        {
-            if (availableResolutions.Length == 0)
-            {
-                return;
-            }
-
-            selectedResolutionIndex =
-                (selectedResolutionIndex + direction +
-                 availableResolutions.Length) % availableResolutions.Length;
-        }
-
-        private void ApplyDisplaySettings()
-        {
-            if (availableResolutions.Length == 0)
-            {
-                Screen.fullScreen = selectedFullscreen;
-                return;
-            }
-
-            Resolution selected =
-                availableResolutions[selectedResolutionIndex];
-            Screen.SetResolution(
-                selected.width,
-                selected.height,
-                selectedFullscreen);
         }
 
         private void DrawArt()
@@ -678,21 +602,31 @@ namespace RuleForge.UI
             {
                 DrawPanel(new Rect(16f, 16f, 310f, 88f));
                 DrawIcon(objectiveIconTexture, 28f, 22f);
+                string progress = goalController.BuildProgressText();
+                if (goalController.TimeLimit > 0f &&
+                    goalController.GoalType != ChallengeGoalType.Survive &&
+                    !goalController.UsesTimeAsHealth)
+                {
+                    int separator = progress.IndexOf("  ·  ", StringComparison.Ordinal);
+                    if (separator >= 0)
+                    {
+                        progress = progress.Substring(0, separator);
+                    }
+                }
                 GUI.Label(
                     new Rect(54f, 22f, 260f, 24f),
-                    goalController.BuildProgressText(),
+                    progress,
                     titleStyle);
-                DrawIcon(healthIconTexture, 28f, 72f);
-                GUI.Label(
-                    new Rect(54f, 48f, 260f, 22f),
-                    "武器：" + TranslateDataValue(
-                        goalController.ActiveWeaponName) +
-                    "   [1/2/3 切换]",
-                    bodyStyle);
-                GUI.Label(
-                    new Rect(54f, 72f, 260f, 22f),
-                    BuildHealthText(),
-                    bodyStyle);
+                if (goalController.TimeLimit > 0f &&
+                    goalController.GoalType != ChallengeGoalType.Survive &&
+                    !goalController.UsesTimeAsHealth)
+                {
+                    GUI.Label(new Rect(54f, 46f, 246f, 18f),
+                        $"剩余 {goalController.RemainingSeconds:0.0} 秒",
+                        bodyStyle);
+                }
+                DrawIcon(healthIconTexture, 28f, 62f);
+                DrawHealthBar(new Rect(54f, 65f, 246f, 18f));
             }
 
             if (weaponController != null)
@@ -722,23 +656,34 @@ namespace RuleForge.UI
             }
 
             float width = Mathf.Min(440f, Screen.width - 40f);
-            float height = 54f + feedbackLines.Count * 24f;
+            int visibleCount = Mathf.Min(2, feedbackLines.Count);
+            float height = 40f + visibleCount * 22f +
+                           (feedbackLines.Count > visibleCount ? 18f : 0f);
             float left = (Screen.width - width) * 0.5f;
-            DrawPanel(new Rect(left, 100f, width, height));
+            float top = 130f;
+            DrawPanel(new Rect(left, top, width, height));
             GUI.Label(
-                new Rect(left + 12f, 108f, width - 24f, 28f),
+                new Rect(left + 12f, top + 6f, width - 24f, 28f),
                 "规则已触发",
-                resultStyle);
-            for (int index = 0; index < feedbackLines.Count; index++)
+                titleStyle);
+            for (int index = 0; index < visibleCount; index++)
             {
                 GUI.Label(
                     new Rect(
                         left + 18f,
-                        138f + index * 24f,
+                        top + 34f + index * 22f,
                         width - 36f,
-                        22f),
+                        20f),
                     feedbackLines[index],
-                    titleStyle);
+                    bodyStyle);
+            }
+            if (feedbackLines.Count > visibleCount)
+            {
+                GUI.Label(new Rect(left + 18f,
+                        top + 34f + visibleCount * 22f,
+                        width - 36f, 18f),
+                    $"另有 {feedbackLines.Count - visibleCount} 项效果",
+                    bodyStyle);
             }
         }
 
@@ -769,6 +714,23 @@ namespace RuleForge.UI
             }
 
             ruleTriggerCount++;
+            RuleRunSummary runSummary = null;
+            for (int index = 0; index < ruleRunSummaries.Count; index++)
+            {
+                if (string.Equals(ruleRunSummaries[index].RuleId,
+                        feedback.RuleId, StringComparison.Ordinal))
+                {
+                    runSummary = ruleRunSummaries[index];
+                    break;
+                }
+            }
+            if (runSummary == null)
+            {
+                runSummary = new RuleRunSummary(feedback.RuleId);
+                ruleRunSummaries.Add(runSummary);
+            }
+            runSummary.TriggerCount++;
+            runSummary.Description = BuildRuleDescription(feedback);
 
             IReadOnlyList<RuleEffectFeedback> effects = feedback.Effects;
             for (int index = 0; index < effects.Count; index++)
@@ -800,7 +762,8 @@ namespace RuleForge.UI
 
             damageSource = gameplayEvent.Instigator != null
                 ? TranslateEnemyName(gameplayEvent.Instigator.name)
-                : "敌人";
+                : "未知来源";
+            lastIncomingDamage = Mathf.Max(0f, gameplayEvent.Value);
             damageFlashExpiresAt = Time.unscaledTime + damageFlashDuration;
             damageIndicatorExpiresAt =
                 Time.unscaledTime + damageIndicatorDuration;
@@ -1035,7 +998,7 @@ namespace RuleForge.UI
                 }
 
                 stateLines.Add(line);
-                if (stateLines.Count >= 4)
+                if (stateLines.Count >= 3)
                 {
                     break;
                 }
@@ -1051,15 +1014,15 @@ namespace RuleForge.UI
                         CultureInfo.InvariantCulture));
             }
 
-            float height = 42f + stateLines.Count * 22f;
+            float height = 34f + stateLines.Count * 19f;
             float top = Screen.height - height - 18f;
-            DrawPanel(new Rect(16f, top, 330f, height));
-            GUI.Label(new Rect(30f, top + 8f, 300f, 24f),
+            DrawPanel(new Rect(16f, top, 310f, height));
+            GUI.Label(new Rect(30f, top + 5f, 280f, 22f),
                 "当前规则状态", titleStyle);
             for (int index = 0; index < stateLines.Count; index++)
             {
                 GUI.Label(
-                    new Rect(30f, top + 32f + index * 22f, 300f, 20f),
+                    new Rect(30f, top + 28f + index * 19f, 280f, 18f),
                     stateLines[index],
                     bodyStyle);
             }
@@ -1129,10 +1092,127 @@ namespace RuleForge.UI
             string progress = goalController != null
                 ? goalController.BuildProgressText()
                 : "目标数据不可用";
-            return progress + "\n" +
-                   $"命中 {hitCount}   爆头 {headshotCount}   " +
-                   $"造成伤害 {totalDamageDealt:0}\n" +
-                   $"规则触发 {ruleTriggerCount} 次";
+            StringBuilder summary = new StringBuilder(240);
+            if (endState == ChallengeGoalState.Defeat)
+            {
+                summary.AppendLine(defeatCause);
+            }
+            summary.AppendLine(progress);
+            if (goalController != null && goalController.UsesTimeAsHealth)
+            {
+                summary.Append("本局坚持 ")
+                    .Append(goalController.SurvivedSeconds.ToString(
+                        "0.0", CultureInfo.InvariantCulture))
+                    .Append(" 秒；剩余时间 ")
+                    .Append(goalController.RemainingSeconds.ToString(
+                        "0.0", CultureInfo.InvariantCulture))
+                    .AppendLine(" 秒");
+            }
+            summary.Append("命中 ").Append(hitCount)
+                .Append("   爆头 ").Append(headshotCount)
+                .Append("   造成伤害 ")
+                .AppendLine(totalDamageDealt.ToString("0", CultureInfo.InvariantCulture));
+            summary.Append("规则触发 ").Append(ruleTriggerCount).Append(" 次");
+
+            List<RuleRunSummary> ordered = GetOrderedRuleSummaries();
+            int visible = Mathf.Min(2, ordered.Count);
+            for (int index = 0; index < visible; index++)
+            {
+                summary.Append('\n')
+                    .Append(ordered[index].Description)
+                    .Append("：")
+                    .Append(ordered[index].TriggerCount)
+                    .Append(" 次");
+            }
+            if (ordered.Count > visible)
+            {
+                summary.Append("\n其余 ")
+                    .Append(ordered.Count - visible)
+                    .Append(" 条规则请点“规则统计”");
+            }
+
+            return summary.ToString();
+        }
+
+        private void DrawResultRuleStats(Rect panelRect)
+        {
+            List<RuleRunSummary> ordered = GetOrderedRuleSummaries();
+            Rect content = new Rect(panelRect.x + 44f,
+                panelRect.y + 148f, panelRect.width - 88f, 155f);
+            if (ordered.Count == 0)
+            {
+                GUI.Label(content, "本局没有规则被触发。", resultDetailsStyle);
+                return;
+            }
+
+            int pageCount = Mathf.CeilToInt(ordered.Count / 3f);
+            resultRulesPage = Mathf.Clamp(resultRulesPage, 0, pageCount - 1);
+            int first = resultRulesPage * 3;
+            for (int offset = 0; offset < 3 && first + offset < ordered.Count;
+                 offset++)
+            {
+                RuleRunSummary run = ordered[first + offset];
+                GUI.Label(new Rect(content.x, content.y + offset * 39f,
+                        content.width, 38f),
+                    $"{first + offset + 1}. {run.Description}  ·  触发 {run.TriggerCount} 次",
+                    resultDetailsStyle);
+            }
+
+            if (pageCount > 1)
+            {
+                GUI.enabled = resultRulesPage > 0;
+                if (GUI.Button(new Rect(content.x, content.y + 122f,
+                        84f, 28f), "上一页"))
+                {
+                    resultRulesPage--;
+                }
+                GUI.enabled = resultRulesPage < pageCount - 1;
+                if (GUI.Button(new Rect(content.x + content.width - 84f,
+                        content.y + 122f, 84f, 28f), "下一页"))
+                {
+                    resultRulesPage++;
+                }
+                GUI.enabled = true;
+            }
+        }
+
+        private List<RuleRunSummary> GetOrderedRuleSummaries()
+        {
+            List<RuleRunSummary> ordered =
+                new List<RuleRunSummary>(ruleRunSummaries);
+            ordered.Sort((left, right) =>
+                right.TriggerCount.CompareTo(left.TriggerCount));
+            return ordered;
+        }
+
+        private static string BuildRuleDescription(RuleTriggerFeedback feedback)
+        {
+            IReadOnlyList<RuleEffectFeedback> effects = feedback.Effects;
+            if (effects.Count == 0)
+            {
+                return string.IsNullOrWhiteSpace(feedback.RuleId)
+                    ? "未命名规则"
+                    : feedback.RuleId;
+            }
+
+            StringBuilder description = new StringBuilder();
+            int visible = Mathf.Min(2, effects.Count);
+            for (int index = 0; index < visible; index++)
+            {
+                if (index > 0)
+                {
+                    description.Append("、");
+                }
+                description.Append(RuleForgeLocalization.EffectName(
+                    effects[index].EffectId,
+                    effects[index].DisplayName,
+                    RuleForgeLanguage.Chinese));
+            }
+            if (effects.Count > visible)
+            {
+                description.Append("等");
+            }
+            return description.ToString();
         }
 
         private void DrawDamageFeedback()
@@ -1190,17 +1270,22 @@ namespace RuleForge.UI
                 GUI.matrix = previousMatrix;
             }
 
+            string hitMessage = goalController != null &&
+                goalController.UsesTimeAsHealth
+                    ? $"{damageSource} 命中 · 时间 -{lastIncomingDamage * goalController.TimeDamageScale:0.#}秒"
+                    : "受到 " + damageSource + " 的伤害";
             GUI.Label(
                 new Rect(0f, Screen.height * 0.68f, Screen.width, 38f),
-                "受到 " + damageSource + " 的伤害",
+                hitMessage,
                 damageStyle);
         }
 
         private string BuildHealthText()
         {
-            string health =
-                $"生命 {goalController.PlayerCurrentHealth:0} / " +
-                $"{goalController.PlayerMaxHealth:0}";
+            string health = goalController.UsesTimeAsHealth
+                ? $"时间生命 {goalController.RemainingSeconds:0.0}秒"
+                : $"生命 {goalController.PlayerCurrentHealth:0} / " +
+                  $"{goalController.PlayerMaxHealth:0}";
             if (playerHealth != null &&
                 playerHealth.DamageProtectionRemaining > 0f)
             {
@@ -1208,6 +1293,71 @@ namespace RuleForge.UI
             }
 
             return health;
+        }
+
+        private void DrawHealthBar(Rect rect)
+        {
+            float maximum = goalController != null
+                ? goalController.UsesTimeAsHealth
+                    ? goalController.GoalType == ChallengeGoalType.TimeBankTarget
+                        ? goalController.GoalTarget
+                        : goalController.TimeLimit
+                    : goalController.PlayerMaxHealth
+                : 0f;
+            float current = goalController != null
+                ? goalController.UsesTimeAsHealth
+                    ? goalController.RemainingSeconds
+                    : goalController.PlayerCurrentHealth
+                : 0f;
+            float ratio = maximum > 0f
+                ? Mathf.Clamp01(current / maximum)
+                : 0f;
+
+            if (healthBarBackgroundTexture != null)
+            {
+                GUI.DrawTexture(
+                    rect,
+                    healthBarBackgroundTexture,
+                    ScaleMode.StretchToFill,
+                    true);
+            }
+            else
+            {
+                Color previous = GUI.color;
+                GUI.color = new Color(0.12f, 0.16f, 0.2f, 0.95f);
+                GUI.DrawTexture(rect, Texture2D.whiteTexture);
+                GUI.color = previous;
+            }
+
+            if (ratio > 0f)
+            {
+                Rect clippedRect = new Rect(
+                    rect.x,
+                    rect.y,
+                    rect.width * ratio,
+                    rect.height);
+                GUI.BeginGroup(clippedRect);
+                if (healthBarFillTexture != null)
+                {
+                    GUI.DrawTexture(
+                        new Rect(0f, 0f, rect.width, rect.height),
+                        healthBarFillTexture,
+                        ScaleMode.StretchToFill,
+                        true);
+                }
+                else
+                {
+                    Color previous = GUI.color;
+                    GUI.color = new Color(0.95f, 0.13f, 0.24f, 1f);
+                    GUI.DrawTexture(
+                        new Rect(0f, 0f, rect.width, rect.height),
+                        Texture2D.whiteTexture);
+                    GUI.color = previous;
+                }
+                GUI.EndGroup();
+            }
+
+            GUI.Label(rect, BuildHealthText(), healthBarLabelStyle);
         }
 
         private static string FormatEffect(RuleEffectFeedback effect)
@@ -1226,6 +1376,13 @@ namespace RuleForge.UI
                          StringComparison.OrdinalIgnoreCase))
             {
                 value = "+" + FormatNumber(effect.Value) + " 弹药";
+            }
+            else if (string.Equals(
+                         effect.Kind,
+                         RuleEffectKind.AddTime.ToString(),
+                         StringComparison.OrdinalIgnoreCase))
+            {
+                value = "+" + FormatNumber(effect.Value) + " 秒";
             }
             else if (string.Equals(
                          effect.Operation,
@@ -1309,13 +1466,19 @@ namespace RuleForge.UI
 
         private void DrawPanel(Rect rect)
         {
-            if (panelTexture == null)
+            Color previous = GUI.color;
+            GUI.color = new Color(0.015f, 0.035f, 0.06f, 0.9f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            if (panelTexture != null)
             {
-                GUI.Box(rect, string.Empty);
-                return;
+                GUI.color = new Color(0.12f, 0.6f, 0.72f, 0.2f);
+                GUI.DrawTexture(
+                    rect,
+                    panelTexture,
+                    ScaleMode.StretchToFill,
+                    true);
             }
-
-            GUI.DrawTexture(rect, panelTexture, ScaleMode.StretchToFill, true);
+            GUI.color = previous;
         }
 
         private static void DrawTextureCentered(Texture2D texture, float size)
@@ -1422,7 +1585,21 @@ namespace RuleForge.UI
                 alignment = TextAnchor.MiddleCenter
             };
             menuBodyStyle.normal.textColor = Color.white;
+            resultDetailsStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 15,
+                wordWrap = true,
+                alignment = TextAnchor.UpperLeft
+            };
+            resultDetailsStyle.normal.textColor = Color.white;
             dangerButtonStyle = RuleForgeGuiTheme.CreateDangerButtonStyle();
+            healthBarLabelStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            healthBarLabelStyle.normal.textColor = Color.white;
         }
 
         private enum FlowMenuReturn
@@ -1430,6 +1607,19 @@ namespace RuleForge.UI
             Main,
             Pause,
             Result
+        }
+
+        private sealed class RuleRunSummary
+        {
+            public RuleRunSummary(string ruleId)
+            {
+                RuleId = ruleId ?? string.Empty;
+                Description = "未命名规则";
+            }
+
+            public string RuleId { get; }
+            public string Description { get; set; }
+            public int TriggerCount { get; set; }
         }
 
         private sealed class HitFeedbackEntry

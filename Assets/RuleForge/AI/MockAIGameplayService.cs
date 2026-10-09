@@ -16,6 +16,21 @@ namespace RuleForge.AI
         public bool IsConfigured =>
             generatedChallengeJson != null && modificationPatchJson != null;
         public bool IsBenchmarkEligible => false;
+        public AIProviderConnectionState ConnectionState =>
+            IsConfigured
+                ? AIProviderConnectionState.Verified
+                : AIProviderConnectionState.NotConfigured;
+        public string ConnectionMessage => IsConfigured
+            ? "Offline mock is available; it is not a real AI connection."
+            : "Offline mock is disabled.";
+
+        public IEnumerator VerifyConnection(Action<bool, string> onComplete)
+        {
+            onComplete?.Invoke(
+                false,
+                "Mock Provider 不是可验证的真实 AI 接口。");
+            yield break;
+        }
 
         public void Configure(TextAsset challengeJson, TextAsset patchJson)
         {

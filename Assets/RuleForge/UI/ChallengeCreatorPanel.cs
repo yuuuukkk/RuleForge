@@ -29,6 +29,8 @@ namespace RuleForge.UI
         private string challengeName = string.Empty;
         private string goal = string.Empty;
         private string goalTargetText = string.Empty;
+        private string timeLimitText = string.Empty;
+        private string timeDamageScaleText = string.Empty;
         private string weapon = string.Empty;
         private float rewardStrength = 1f;
         private float penaltyStrength = 1f;
@@ -37,16 +39,13 @@ namespace RuleForge.UI
         private string openDropdownId = string.Empty;
         private int nextRuleNumber = 1;
         private string[] weaponOptions = Array.Empty<string>();
-        private string creationPrompt = string.Empty;
-        private string modificationPrompt = string.Empty;
+        private string designerPrompt = string.Empty;
         private string lastGeneratedPrompt = string.Empty;
         private string lastModificationPrompt = string.Empty;
-        private string apiKeyDraft = string.Empty;
-        private bool rememberApiKeyOnThisComputer;
-        private string apiKeyStatus = string.Empty;
+        private readonly AIProviderSetupView aiProviderSetupView =
+            new AIProviderSetupView();
         private GameplayProposal gameplayProposal;
         private string gameplayProposalPrompt = string.Empty;
-        private string proposalRefinement = string.Empty;
         private GameplayModificationProposal modificationProposal;
         private string modificationProposalPrompt = string.Empty;
         private string modificationRequestSignature = string.Empty;
@@ -56,6 +55,10 @@ namespace RuleForge.UI
         private AIChallengePreview pendingGenerationRepair;
         private bool showAdvancedEdit;
         private bool showDeveloperView;
+        private bool showAISetup;
+        private string lastAIDiagnostic = string.Empty;
+        private bool showAIDiagnostic;
+        private bool showProposalRevision;
         private ChallengeSpec pendingModification;
         private AIChallengePreview pendingModificationPreview;
         private ChallengeSpec modificationBase;
@@ -63,6 +66,20 @@ namespace RuleForge.UI
             new List<string>();
         private ValidationResult currentDraftValidation;
         private BalanceEvaluation currentDraftBalance;
+        private bool hasGeneratedDraftThisSession;
+        private bool hasUnplayedPreview;
+        private float proposalPenaltyRewardRatio = 1f;
+        private GUIStyle creatorTitleStyle;
+        private GUIStyle creatorSubtitleStyle;
+        private GUIStyle creatorSectionStyle;
+        private GUIStyle creatorMutedStyle;
+        private GUIStyle creatorPitchStyle;
+        private GUIStyle creatorWarningStyle;
+        private GUIStyle creatorSecondaryButtonStyle;
+        private GUIStyle creatorSuggestionStyle;
+        private GUIStyle creatorPlayButtonStyle;
+        private GUIStyle creatorCardStyle;
+        private GUIStyle creatorStepStyle;
 
         private static readonly string[] CreationExampleLabelsEnglish =
         {
@@ -92,49 +109,16 @@ namespace RuleForge.UI
             "Every reload has a chance to spawn a fast enemy; killing it refunds ammunition.",
             "Survive for 60 seconds. Kills increase damage while enemies get faster; the penalty is 1.5 times the reward."
         };
-        private static readonly string[] ModifySuggestionLabelsEnglish =
-        {
-            "Make it harder",
-            "Increase reward",
-            "Increase penalty",
-            "Faster risk growth",
-            "Reduce max stacks",
-            "More randomness"
-        };
-        private static readonly string[] ModifySuggestionLabelsChinese =
-        {
-            "更难",
-            "奖励更高",
-            "惩罚更高",
-            "风险成长更快",
-            "减少最大层数",
-            "增加随机性"
-        };
-        private static readonly string[] ModifySuggestionsChinese =
-        {
-            "让这个玩法更难，但保持核心玩法不变。",
-            "提高奖励强度，其他内容不要改。",
-            "提高惩罚强度，其他内容不要改。",
-            "让风险随叠加层数增长得更快。",
-            "减少所有可叠加效果的最大层数。",
-            "在不改变核心目标的情况下增加一些随机性。"
-        };
-        private static readonly string[] ModifySuggestionsEnglish =
-        {
-            "Make this challenge harder without changing its core idea.",
-            "Increase the reward and leave everything else unchanged.",
-            "Increase the penalty and leave everything else unchanged.",
-            "Make the risk grow faster as stacks increase.",
-            "Reduce the maximum stacks of stackable effects.",
-            "Add more randomness without changing the core goal."
-        };
-
         private static readonly string[] TriggerOptions =
             GameplayEventCapabilities.GetRuntimeEventNames();
         private static readonly string[] GoalOptions =
             Enum.GetNames(typeof(ChallengeGoalType));
         private static readonly string[] ConditionOptions =
             Enum.GetNames(typeof(RuleConditionType));
+        private static readonly string[] StackModeOptions =
+            Enum.GetNames(typeof(RuleStackMode));
+        private static readonly string[] ScalingSourceOptions =
+            Enum.GetNames(typeof(RuntimeValueSource));
         private static readonly string[] ComparisonOptions =
             Enum.GetNames(typeof(RuleComparison));
         private static readonly string[] TextComparisonOptions =
@@ -188,31 +172,46 @@ namespace RuleForge.UI
             }
 
             GUISkin previousSkin = RuleForgeGuiTheme.Begin();
-            float width = Mathf.Min(780f, Screen.width - 40f);
-            float height = Mathf.Max(280f, Screen.height - 40f);
-            GUILayout.BeginArea(
-                new Rect(20f, 20f, width, height),
-                RuleForgeLocalization.T(
-                    "RuleForge Challenge Creator — F2 to close",
-                    "RuleForge 挑战创建器 — F2 关闭"),
-                GUI.skin.window);
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition);
+            EnsureCreatorStyles();
+            Color previousColor = GUI.color;
+            GUI.color = new Color(0.005f, 0.012f, 0.025f, 0.72f);
+            GUI.DrawTexture(
+                new Rect(0f, 0f, Screen.width, Screen.height),
+                Texture2D.whiteTexture);
+            GUI.color = previousColor;
+            float width = Mathf.Max(1f,
+                Mathf.Min(820f, Screen.width - 32f));
+            float height = Mathf.Max(1f,
+                Mathf.Min(520f, Screen.height - 32f));
+            Rect panelRect = new Rect(
+                (Screen.width - width) * 0.5f,
+                (Screen.height - height) * 0.5f,
+                width,
+                height);
+            GUILayout.BeginArea(panelRect, GUI.skin.window);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "Back / Close",
-                    "返回 / 关闭"), GUILayout.Width(120f)))
-            {
-                SetOpen(false);
-                GUILayout.EndHorizontal();
-                GUILayout.EndScrollView();
-                GUILayout.EndArea();
-                RuleForgeGuiTheme.End(previousSkin);
-                return;
-            }
-
+            GUILayout.BeginVertical();
+            GUILayout.Label("RULEFORGE", creatorTitleStyle);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "AI GAMEPLAY DESIGNER",
+                "AI 玩法设计器"), creatorSubtitleStyle);
+            GUILayout.EndVertical();
             GUILayout.FlexibleSpace();
+            if (GUILayout.Button(showAISetup
+                    ? RuleForgeLocalization.T("Back", "返回创建")
+                    : CanUseRealAI()
+                        ? RuleForgeLocalization.T("AI Settings", "AI 设置")
+                        : RuleForgeLocalization.T("Set Up AI", "配置 AI"),
+                    creatorSecondaryButtonStyle,
+                    GUILayout.Width(100f), GUILayout.Height(32f)))
+            {
+                showAISetup = !showAISetup;
+                scrollPosition = Vector2.zero;
+                GUI.FocusControl(null);
+            }
             if (GUILayout.Button(RuleForgeLocalization.ToggleLabel,
-                    GUILayout.Width(90f)))
+                    creatorSecondaryButtonStyle,
+                    GUILayout.Width(86f), GUILayout.Height(32f)))
             {
                 RuleForgeLocalization.Toggle();
                 statusMessage = string.Empty;
@@ -224,8 +223,35 @@ namespace RuleForge.UI
                         pendingModificationDiff);
                 }
             }
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "Close",
+                    "关闭"), creatorSecondaryButtonStyle,
+                    GUILayout.Width(86f), GUILayout.Height(32f)))
+            {
+                SetOpen(false);
+                GUILayout.EndHorizontal();
+                GUILayout.EndArea();
+                RuleForgeGuiTheme.End(previousSkin);
+                return;
+            }
+
             GUILayout.EndHorizontal();
-            DrawCreator();
+            GUILayout.Space(8f);
+            scrollPosition.x = 0f;
+            scrollPosition = GUILayout.BeginScrollView(
+                scrollPosition,
+                false,
+                true,
+                GUIStyle.none,
+                GUI.skin.verticalScrollbar);
+            if (showAISetup)
+            {
+                aiProviderSetupView.Draw(aiController);
+            }
+            else
+            {
+                DrawCreator();
+            }
             GUILayout.EndScrollView();
             GUILayout.EndArea();
             RuleForgeGuiTheme.End(previousSkin);
@@ -252,7 +278,11 @@ namespace RuleForge.UI
             {
                 RuntimePanelCoordinator.Open(this, () => SetOpen(false));
                 ResolveRuleEngine();
-                RebuildFromActiveChallenge();
+                aiController?.RefreshProviderSelection();
+                if (!hasUnplayedPreview)
+                {
+                    RebuildFromActiveChallenge();
+                }
                 RuntimeInputGate.SetBlocked(this, true);
             }
             else
@@ -312,6 +342,7 @@ namespace RuleForge.UI
 
         private void RebuildFromActiveChallenge()
         {
+            hasUnplayedPreview = false;
             ruleDrafts.Clear();
             ClearPendingModification();
             statusMessage = string.Empty;
@@ -370,6 +401,12 @@ namespace RuleForge.UI
             goalTargetText = editableCopy.GoalTarget.ToString(
                 "0.###",
                 CultureInfo.InvariantCulture);
+            timeLimitText = editableCopy.TimeLimit.ToString(
+                "0.###",
+                CultureInfo.InvariantCulture);
+            timeDamageScaleText = editableCopy.TimeDamageScale.ToString(
+                "0.###",
+                CultureInfo.InvariantCulture);
             weapon = editableCopy.Weapon;
 
             GameplayRule[] rules = editableCopy.Rules;
@@ -395,14 +432,81 @@ namespace RuleForge.UI
             }
 
             RefreshWeaponOptions();
-            DrawAIGenerator();
-
-            if (HasEditableChallenge())
+            bool showCurrentChallenge = hasGeneratedDraftThisSession &&
+                                        HasEditableChallenge() &&
+                                        gameplayProposal == null &&
+                                        pendingGenerationRepair == null;
+            DrawCreatorProgress(showCurrentChallenge);
+            if (pendingGenerationRepair != null)
             {
-                GUILayout.Space(12f);
+                DrawGenerationRepair();
+                return;
+            }
+
+            if (gameplayProposal != null)
+            {
+                if (showProposalRevision)
+                {
+                    if (GUILayout.Button(RuleForgeLocalization.T(
+                            "Back to proposal", "返回提案"),
+                            creatorSecondaryButtonStyle,
+                            GUILayout.Height(34f)))
+                    {
+                        showProposalRevision = false;
+                    }
+                    DrawUnifiedDesigner();
+                }
+                else
+                {
+                    DrawGameplayProposal();
+                    if (GUILayout.Button(RuleForgeLocalization.T(
+                            "Change this proposal in one sentence",
+                            "用一句话调整这个方案"),
+                            creatorSecondaryButtonStyle,
+                            GUILayout.Height(36f)))
+                    {
+                        showProposalRevision = true;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(statusMessage))
+                {
+                    GUILayout.Label(statusMessage, creatorMutedStyle);
+                }
+                if (!string.IsNullOrWhiteSpace(lastAIDiagnostic))
+                {
+                    showAIDiagnostic = GUILayout.Toggle(
+                        showAIDiagnostic,
+                        RuleForgeLocalization.T(
+                            "Show technical error", "查看错误详情"),
+                        creatorSecondaryButtonStyle,
+                        GUILayout.Height(30f));
+                    if (showAIDiagnostic)
+                    {
+                        DrawReadOnlyDiagnosticText(
+                            RuleForgeLocalization.T(
+                                "Validator details", "验证器详情"),
+                            lastAIDiagnostic);
+                    }
+                }
+                if (!CanUseRealAI())
+                {
+                    GUILayout.Label(BuildAIAvailabilityMessage(),
+                        creatorWarningStyle);
+                }
+                return;
+            }
+
+            if (showCurrentChallenge)
+            {
                 DrawHumanReadableSummary();
                 DrawPrimaryPlayButton();
-                DrawImproveWithAI();
+            }
+
+            DrawUnifiedDesigner();
+
+            if (showCurrentChallenge)
+            {
                 DrawModificationFlow();
             }
 
@@ -418,12 +522,14 @@ namespace RuleForge.UI
                 RuleForgeLocalization.T(
                     "Advanced Edit — manual parameters",
                     "高级编辑 — 手动参数"),
-                GUI.skin.button,
+                creatorSecondaryButtonStyle,
                 GUILayout.Height(30f));
             GUI.enabled = true;
             if (showAdvancedEdit && !hasPendingAIReview)
             {
+                DrawImproveWithAI();
                 DrawAdvancedEditor();
+                DrawBalanceDetails();
             }
             else if (showAdvancedEdit)
             {
@@ -437,7 +543,7 @@ namespace RuleForge.UI
                 RuleForgeLocalization.T(
                     "Developer View — provider, validation and raw DSL",
                     "开发者视图 — Provider、验证与原始 DSL"),
-                GUI.skin.button,
+                creatorSecondaryButtonStyle,
                 GUILayout.Height(28f));
             if (showDeveloperView)
             {
@@ -450,67 +556,246 @@ namespace RuleForge.UI
             }
         }
 
-        private void DrawAIGenerator()
+        private void EnsureCreatorStyles()
         {
-            DrawFirstUseGuide();
-            GUILayout.Space(8f);
-            GUILayout.Label(RuleForgeLocalization.T(
-                "Describe your challenge",
-                "描述你想玩的玩法"), GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T(
-                "You can describe: goal + reward + penalty + scaling.",
-                "你可以描述：目标 + 奖励 + 惩罚 + 成长方式。"));
-            DrawPromptArea(
-                ref creationPrompt,
-                RuleForgeLocalization.T(
-                    "For example: Create a high-risk, high-reward survival mode. Every kill increases my damage by 5%, but enemy speed increases by 8%, up to 10 stacks.",
-                    "例如：做一个高风险高收益的生存模式。每杀一个敌人，我的伤害提高 5%，但敌人的速度提高 8%，最多叠加 10 次。"),
-                105f);
-
-            GUILayout.Label(RuleForgeLocalization.T(
-                "Try an example — clicking only fills the text box",
-                "试试示例 — 点击只会填入输入框"));
-            DrawPromptChips(
-                CreationExampleLabelsEnglish,
-                CreationExampleLabelsChinese,
-                CreationExamplesEnglish,
-                CreationExamplesChinese,
-                value => creationPrompt = value,
-                2);
-
-            bool canGenerate = CanUseRealAI() &&
-                               !aiController.IsBusy &&
-                               !string.IsNullOrWhiteSpace(creationPrompt);
-            GUI.enabled = canGenerate;
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "ASK AI GAMEPLAY DESIGNER",
-                    "让 AI 策划分析"), GUILayout.Height(48f)))
+            if (creatorTitleStyle != null)
             {
-                ClearPendingModification();
-                gameplayProposal = null;
-                pendingGenerationRepair = null;
-                gameplayProposalPrompt = creationPrompt;
-                statusMessage = RuleForgeLocalization.T(
-                    "AI is understanding, completing, and critiquing your idea...",
-                    "AI 正在理解、补全并检查你的玩法想法……");
-                aiController.AnalyzeGameplay(
-                    creationPrompt,
-                    null,
-                    string.Empty,
-                    HandleGameplayProposal);
+                return;
+            }
+
+            creatorTitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 28,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft
+            };
+            creatorTitleStyle.normal.textColor =
+                new Color(0.23f, 0.9f, 1f, 1f);
+
+            creatorSubtitleStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleLeft
+            };
+            creatorSubtitleStyle.normal.textColor =
+                new Color(0.5f, 0.62f, 0.73f, 1f);
+
+            creatorSectionStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 18,
+                fontStyle = FontStyle.Bold,
+                wordWrap = true
+            };
+            creatorSectionStyle.normal.textColor = Color.white;
+
+            creatorMutedStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                wordWrap = true
+            };
+            creatorMutedStyle.normal.textColor =
+                new Color(0.62f, 0.72f, 0.8f, 1f);
+
+            creatorPitchStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 17,
+                fontStyle = FontStyle.Bold,
+                wordWrap = true,
+                padding = new RectOffset(2, 2, 8, 10)
+            };
+            creatorPitchStyle.normal.textColor =
+                new Color(0.9f, 0.97f, 1f, 1f);
+
+            creatorWarningStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13,
+                wordWrap = true
+            };
+            creatorWarningStyle.normal.textColor =
+                new Color(1f, 0.72f, 0.28f, 1f);
+
+            creatorSecondaryButtonStyle =
+                RuleForgeGuiTheme.CreateSecondaryButtonStyle();
+            creatorSuggestionStyle = new GUIStyle(
+                creatorSecondaryButtonStyle)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = true,
+                padding = new RectOffset(14, 14, 8, 8)
+            };
+            creatorPlayButtonStyle =
+                RuleForgeGuiTheme.CreatePlayButtonStyle();
+            creatorCardStyle = new GUIStyle(GUI.skin.box)
+            {
+                padding = new RectOffset(22, 22, 18, 18)
+            };
+            creatorStepStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 12,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+            creatorStepStyle.normal.textColor =
+                new Color(0.6f, 0.8f, 0.88f, 1f);
+        }
+
+        private void DrawCreatorProgress(bool showCurrentChallenge)
+        {
+            string activeStep = showCurrentChallenge
+                ? RuleForgeLocalization.T("3  REVIEW & PLAY", "3  查看并开始")
+                : gameplayProposal != null
+                    ? RuleForgeLocalization.T("2  REVIEW PROPOSAL", "2  确认方案")
+                    : RuleForgeLocalization.T("1  DESCRIBE", "1  描述想法");
+            GUILayout.Label(activeStep, creatorStepStyle);
+            GUILayout.Space(10f);
+        }
+
+        private void DrawUnifiedDesigner()
+        {
+            bool refiningProposal = gameplayProposal != null;
+            bool modifyingChallenge = !refiningProposal &&
+                                      hasGeneratedDraftThisSession &&
+                                      HasEditableChallenge();
+
+            GUILayout.Space(12f);
+            GUILayout.BeginVertical(creatorCardStyle);
+            GUILayout.Label(RuleForgeLocalization.T(
+                modifyingChallenge
+                    ? "What would you like to change?"
+                    : refiningProposal
+                        ? "Refine this proposal"
+                        : "What do you want to play?",
+                modifyingChallenge
+                    ? "你想怎么修改这个玩法？"
+                    : refiningProposal
+                        ? "调整这个方案"
+                        : "你想做什么玩法？"), creatorSectionStyle);
+            GUILayout.Label(RuleForgeLocalization.T(
+                modifyingChallenge
+                    ? "Tell AI what should feel different. It will propose the smallest change."
+                    : refiningProposal
+                        ? "Tell AI how to revise the proposal, or generate it as shown."
+                        : "Describe the experience in one sentence. AI will turn it into an editable proposal.",
+                modifyingChallenge
+                    ? "直接说哪里需要改变，AI 会提出最小修改方案。"
+                    : refiningProposal
+                        ? "继续说你想怎么调整，或者按当前提案生成。"
+                        : "用一句话描述体验，AI 会给出一份可以继续编辑的方案。"),
+                creatorMutedStyle);
+            DrawPromptArea(
+                ref designerPrompt,
+                RuleForgeLocalization.T(
+                    modifyingChallenge
+                        ? "For example: The late game is too chaotic. Slow down enemy speed growth and leave everything else unchanged."
+                        : refiningProposal
+                            ? "For example: Keep the core idea, but make the risk grow faster."
+                            : "For example: Every kill makes me stronger, but enemies grow faster too. Survive for 60 seconds.",
+                    modifyingChallenge
+                        ? "例如：后期太疯了，降低敌人速度成长，其他内容不要改。"
+                        : refiningProposal
+                            ? "例如：保留核心想法，但让风险成长得更快。"
+                            : "例如：每次击杀让我变强，但敌人也会更快；坚持生存 60 秒。"),
+                modifyingChallenge ? 76f : refiningProposal ? 86f : 118f);
+
+            if (!refiningProposal && !modifyingChallenge)
+            {
+                GUILayout.Label(RuleForgeLocalization.T(
+                    "Try an example",
+                    "试试示例"), creatorMutedStyle);
+                DrawPromptChips(
+                    CreationExampleLabelsEnglish,
+                    CreationExampleLabelsChinese,
+                    CreationExamplesEnglish,
+                    CreationExamplesChinese,
+                    value => designerPrompt = value,
+                    2);
+            }
+
+            bool canSend = CanUseRealAI() &&
+                           !aiController.IsBusy &&
+                           !string.IsNullOrWhiteSpace(designerPrompt) &&
+                           pendingModification == null &&
+                           pendingGenerationRepair == null;
+            GUI.enabled = canSend;
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    modifyingChallenge
+                        ? "PROPOSE CHANGES"
+                        : refiningProposal
+                            ? "REVISE PROPOSAL"
+                            : "DESIGN MY CHALLENGE",
+                    modifyingChallenge
+                        ? "让 AI 提出修改"
+                        : refiningProposal
+                            ? "调整当前提案"
+                            : "让 AI 设计玩法"), GUILayout.Height(50f)))
+            {
+                if (modifyingChallenge)
+                {
+                    BeginUnifiedModification(designerPrompt);
+                }
+                else if (refiningProposal)
+                {
+                    RefineGameplayProposal(designerPrompt);
+                }
+                else
+                {
+                    BeginNewGameplayProposal(designerPrompt);
+                }
             }
 
             GUI.enabled = true;
             if (!CanUseRealAI())
             {
-                GUILayout.Label(RuleForgeLocalization.T(
-                    "Real AI is not active and configured. Open Developer View to inspect or switch the provider; no mock result will be shown as AI output.",
-                    "真实 AI 尚未启用并配置。可在“开发者视图”检查或切换 Provider；界面不会用模拟结果冒充 AI 输出。"),
-                    GUI.skin.box);
+                GUILayout.Space(8f);
+                GUILayout.Label(BuildAIAvailabilityMessage(),
+                    creatorWarningStyle);
             }
 
-            DrawGameplayProposal();
-            DrawGenerationRepair();
+            GUILayout.EndVertical();
+
+        }
+
+        private void BeginNewGameplayProposal(string prompt)
+        {
+            ClearPendingModification();
+            gameplayProposal = null;
+            showProposalRevision = false;
+            pendingGenerationRepair = null;
+            gameplayProposalPrompt = prompt;
+            statusMessage = RuleForgeLocalization.T(
+                "AI is turning your idea into a gameplay proposal...",
+                "AI 正在把你的想法整理成玩法提案……");
+            aiController.AnalyzeGameplay(
+                prompt,
+                null,
+                string.Empty,
+                HandleGameplayProposal);
+        }
+
+        private void BeginUnifiedModification(string prompt)
+        {
+            if (!TryBuildCandidate(
+                    out ChallengeSpec current,
+                    out string error))
+            {
+                statusMessage = error;
+                return;
+            }
+
+            modificationBase = JsonUtility.FromJson<ChallengeSpec>(
+                JsonUtility.ToJson(current));
+            pendingModificationDiff.Clear();
+            modificationProposal = null;
+            modificationProposalPrompt = prompt;
+            modificationRequestSignature = BuildDraftSignature();
+            statusMessage = RuleForgeLocalization.T(
+                "AI is identifying the smallest relevant change...",
+                "AI 正在判断最相关的最小修改……");
+            aiController.AnalyzeModification(
+                prompt,
+                current,
+                HandleModificationProposal);
         }
 
         private void DrawGameplayProposal()
@@ -521,28 +806,16 @@ namespace RuleForge.UI
             }
 
             GUILayout.Space(10f);
-            GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T("USER", "玩家"));
-            GUILayout.Label(gameplayProposalPrompt, GUI.skin.box);
+            GUILayout.BeginVertical(creatorCardStyle);
             GUILayout.Label(RuleForgeLocalization.T(
-                "AI GAMEPLAY DESIGNER", "AI 游戏策划"), GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T("Confidence: ", "理解信心：") +
-                gameplayProposal.Confidence);
-            GUILayout.Label(gameplayProposal.Summary);
-            if (!string.IsNullOrWhiteSpace(gameplayProposal.SuggestedGoal))
+                "AI PROPOSAL", "AI 玩法提案"), creatorSectionStyle);
+            GUILayout.Label(gameplayProposal.Summary, creatorPitchStyle);
+            if (gameplayProposal.Warnings.Length > 0 &&
+                !string.IsNullOrWhiteSpace(gameplayProposal.Warnings[0]))
             {
-                GUILayout.Label(RuleForgeLocalization.T("Goal: ", "目标：") +
-                    gameplayProposal.SuggestedGoal);
+                GUILayout.Label(gameplayProposal.Warnings[0],
+                    creatorWarningStyle);
             }
-            DrawStringList(gameplayProposal.SuggestedRules);
-            if (!string.IsNullOrWhiteSpace(
-                    gameplayProposal.DesignReasoningSummary))
-            {
-                GUILayout.Label(RuleForgeLocalization.T(
-                    "Design note: ", "设计说明：") +
-                    gameplayProposal.DesignReasoningSummary);
-            }
-            DrawStringList(gameplayProposal.Warnings);
 
             if (!string.IsNullOrWhiteSpace(
                     gameplayProposal.ClarificationQuestion))
@@ -551,20 +824,28 @@ namespace RuleForge.UI
                     GUI.skin.box);
             }
 
-            proposalRefinement = GUILayout.TextField(
-                proposalRefinement ?? string.Empty);
-            GUI.enabled = !aiController.IsBusy &&
-                          !string.IsNullOrWhiteSpace(proposalRefinement);
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "SEND TO DESIGNER", "发送给 AI 策划")))
+            string[] suggestions = gameplayProposal.ActionSuggestions;
+            if (suggestions.Length > 0)
             {
-                RefineGameplayProposal(proposalRefinement);
+                GUILayout.Label(RuleForgeLocalization.T(
+                    "Choose a direction", "或者选择一个方向"),
+                    creatorMutedStyle);
+                for (int index = 0; index < suggestions.Length; index++)
+                {
+                    string suggestion = suggestions[index];
+                    if (!string.IsNullOrWhiteSpace(suggestion))
+                    {
+                        DrawProposalIntentButton(suggestion, suggestion);
+                    }
+                }
             }
-            GUI.enabled = true;
 
-            if (gameplayProposal.CanGenerate)
+            if (gameplayProposal.CanGenerate &&
+                gameplayProposal.WithinVocabulary)
             {
-                GUI.enabled = !aiController.IsBusy;
+                DrawProposalRatioControl();
+
+                GUI.enabled = CanUseRealAI() && !aiController.IsBusy;
                 if (GUILayout.Button(RuleForgeLocalization.T(
                         "GENERATE THIS", "按这个方案生成"),
                         GUILayout.Height(42f)))
@@ -579,46 +860,78 @@ namespace RuleForge.UI
                         HandleAIGenerationPreview);
                 }
                 GUI.enabled = true;
-
-                GUILayout.BeginHorizontal();
-                DrawProposalIntentButton(
-                    RuleForgeLocalization.T("Make It Crazier", "更疯狂"),
-                    RuleForgeLocalization.T(
-                        "Make the proposal crazier while preserving its core idea.",
-                        "保留核心想法，但让这个方案更疯狂。"));
-                DrawProposalIntentButton(
-                    RuleForgeLocalization.T("Change Reward", "调整奖励"),
-                    RuleForgeLocalization.T(
-                        "Propose a different reward while preserving the rest.",
-                        "换一种奖励，其他设计尽量保持不变。"));
-                DrawProposalIntentButton(
-                    RuleForgeLocalization.T("Change Risk", "调整风险"),
-                    RuleForgeLocalization.T(
-                        "Propose a different risk while preserving the rest.",
-                        "换一种风险，其他设计尽量保持不变。"));
-                GUILayout.EndHorizontal();
-                if (gameplayProposal.ActionSuggestions != null)
-                {
-                    for (int index = 0;
-                         index < gameplayProposal.ActionSuggestions.Length;
-                         index++)
-                    {
-                        string suggestion =
-                            gameplayProposal.ActionSuggestions[index];
-                        if (!string.IsNullOrWhiteSpace(suggestion))
-                        {
-                            DrawProposalIntentButton(suggestion, suggestion);
-                        }
-                    }
-                }
             }
             GUILayout.EndVertical();
+        }
+
+        private void DrawProposalRatioControl()
+        {
+            GUILayout.Space(6f);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "Reward / risk preference",
+                "奖惩比例"), creatorMutedStyle);
+            float updated = GUILayout.HorizontalSlider(
+                proposalPenaltyRewardRatio,
+                0f,
+                3f);
+            proposalPenaltyRewardRatio = Mathf.Round(updated * 10f) / 10f;
+            GUILayout.Label(RuleForgeLocalization.T(
+                "Reward 1 : Risk ",
+                "奖励 1 : 惩罚 ") +
+                proposalPenaltyRewardRatio.ToString(
+                    "0.0", CultureInfo.InvariantCulture) +
+                "  ·  " + DescribeRatio(proposalPenaltyRewardRatio),
+                creatorMutedStyle);
+
+            if (Mathf.Abs(
+                    proposalPenaltyRewardRatio -
+                    gameplayProposal.PenaltyRewardRatio) < 0.05f)
+            {
+                return;
+            }
+
+            if (GUILayout.Button(RuleForgeLocalization.T(
+                    "UPDATE PROPOSAL TO THIS RATIO",
+                    "按这个奖惩比例调整方案"), GUILayout.Height(34f)))
+            {
+                string ratio = proposalPenaltyRewardRatio.ToString(
+                    "0.0",
+                    CultureInfo.InvariantCulture);
+                RefineGameplayProposal(RuleForgeLocalization.T(
+                    "Adjust the proposal so penalty strength is " + ratio +
+                    " times reward strength. Keep the core idea unchanged.",
+                    "把方案调整为惩罚强度是奖励强度的 " + ratio +
+                    " 倍，核心想法保持不变。"));
+            }
+        }
+
+        private static string DescribeRatio(float ratio)
+        {
+            if (ratio < 0.05f)
+            {
+                return RuleForgeLocalization.T("No risk", "无惩罚");
+            }
+            if (ratio < 0.8f)
+            {
+                return RuleForgeLocalization.T("Reward focused", "奖励优先");
+            }
+            if (ratio <= 1.2f)
+            {
+                return RuleForgeLocalization.T("Balanced", "相对平衡");
+            }
+            if (ratio <= 2f)
+            {
+                return RuleForgeLocalization.T("High risk", "高风险");
+            }
+
+            return RuleForgeLocalization.T("Extreme risk", "极限风险");
         }
 
         private void DrawProposalIntentButton(string label, string intent)
         {
             GUI.enabled = !aiController.IsBusy;
-            if (GUILayout.Button(label))
+            if (GUILayout.Button(label, creatorSuggestionStyle,
+                    GUILayout.MinHeight(38f)))
             {
                 RefineGameplayProposal(intent);
             }
@@ -630,7 +943,7 @@ namespace RuleForge.UI
             statusMessage = RuleForgeLocalization.T(
                 "AI is revising the gameplay proposal...",
                 "AI 正在调整玩法提案……");
-            proposalRefinement = string.Empty;
+            designerPrompt = string.Empty;
             aiController.AnalyzeGameplay(
                 gameplayProposalPrompt,
                 gameplayProposal,
@@ -651,38 +964,6 @@ namespace RuleForge.UI
                     GUILayout.Label("• " + values[index]);
                 }
             }
-        }
-
-        private void DrawFirstUseGuide()
-        {
-            GUILayout.Label(RuleForgeLocalization.T(
-                "Create a playable FPS challenge with one description",
-                "用一句话创建可以立即试玩的 FPS 玩法"), GUI.skin.box);
-            GUILayout.BeginHorizontal();
-            DrawGuideStep("1", RuleForgeLocalization.T(
-                "Describe", "描述"), RuleForgeLocalization.T(
-                "Say what you want to play.", "用一句话描述玩法。"));
-            DrawGuideStep("2", RuleForgeLocalization.T(
-                "Generate", "生成"), RuleForgeLocalization.T(
-                "AI builds the rules.", "AI 转换成游戏规则。"));
-            DrawGuideStep("3", RuleForgeLocalization.T(
-                "Play", "试玩"), RuleForgeLocalization.T(
-                "Start immediately.", "立即开始试玩。"));
-            DrawGuideStep("4", RuleForgeLocalization.T(
-                "Modify", "修改"), RuleForgeLocalization.T(
-                "Tell AI what to change.", "不满意就告诉 AI。"));
-            GUILayout.EndHorizontal();
-        }
-
-        private static void DrawGuideStep(
-            string number,
-            string title,
-            string description)
-        {
-            GUILayout.BeginVertical(GUI.skin.box, GUILayout.MinWidth(150f));
-            GUILayout.Label(number + ". " + title);
-            GUILayout.Label(description);
-            GUILayout.EndVertical();
         }
 
         private static void DrawPromptArea(
@@ -709,15 +990,15 @@ namespace RuleForge.UI
             placeholderStyle.normal.textColor = new Color(0.65f, 0.65f, 0.65f, 1f);
             GUI.Label(
                 new Rect(
-                    textRect.x + 7f,
-                    textRect.y + 5f,
-                    textRect.width - 14f,
-                    textRect.height - 10f),
+                    textRect.x + 16f,
+                    textRect.y + 13f,
+                    textRect.width - 32f,
+                    textRect.height - 26f),
                 placeholder,
                 placeholderStyle);
         }
 
-        private static void DrawPromptChips(
+        private void DrawPromptChips(
             string[] englishLabels,
             string[] chineseLabels,
             string[] englishPrompts,
@@ -737,7 +1018,8 @@ namespace RuleForge.UI
                                RuleForgeLanguage.Chinese
                     ? chineseLabels[index]
                     : englishLabels[index];
-                if (GUILayout.Button(label, GUILayout.Height(28f)))
+                if (GUILayout.Button(label, creatorSecondaryButtonStyle,
+                        GUILayout.Height(32f)))
                 {
                     string prompt = RuleForgeLocalization.Current ==
                                     RuleForgeLanguage.Chinese
@@ -776,15 +1058,16 @@ namespace RuleForge.UI
                 return;
             }
 
-            GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label(candidate.DisplayName.ToUpperInvariant(), GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T("Goal", "目标"));
-            GUILayout.Label(FormatGoal(candidate));
+            GUILayout.BeginVertical(creatorCardStyle);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "CURRENT PLAN",
+                "当前方案"), creatorMutedStyle);
+            GUILayout.Label(candidate.DisplayName.ToUpperInvariant(),
+                creatorSectionStyle);
 
             List<string> rewards = new List<string>();
             List<string> penalties = new List<string>();
             List<string> neutral = new List<string>();
-            int maximumStacks = 0;
             GameplayRule[] rules = candidate.Rules;
             for (int ruleIndex = 0; ruleIndex < rules.Length; ruleIndex++)
             {
@@ -805,7 +1088,6 @@ namespace RuleForge.UI
                         continue;
                     }
 
-                    maximumStacks = Mathf.Max(maximumStacks, effect.MaxStacks);
                     string summary = FormatEffectSummary(rule, effect);
                     if (ruleEngine.TryGetEffectDefinition(
                             effect.EffectId,
@@ -831,71 +1113,87 @@ namespace RuleForge.UI
                 }
             }
 
-            DrawSummaryGroup(
-                RuleForgeLocalization.T("Your Advantage", "你的优势"),
-                rewards);
-            DrawSummaryGroup(
-                RuleForgeLocalization.T("Your Risk", "你的风险"),
-                penalties);
-            DrawSummaryGroup(
-                RuleForgeLocalization.T("Other Rules", "其他规则"),
-                neutral);
-            if (maximumStacks > 1)
+            GUILayout.Label(BuildOneSentenceSummary(
+                candidate,
+                rewards,
+                penalties,
+                neutral), creatorPitchStyle);
+
+            GUILayout.EndVertical();
+        }
+
+        private string BuildOneSentenceSummary(
+            ChallengeSpec candidate,
+            List<string> rewards,
+            List<string> penalties,
+            List<string> neutral)
+        {
+            string sentence = FormatGoal(candidate);
+            if (rewards.Count > 0)
             {
-                GUILayout.Label(RuleForgeLocalization.T(
-                    "Maximum", "最大叠加"));
-                GUILayout.Label(maximumStacks + RuleForgeLocalization.T(
-                    " stacks", " 层"));
+                sentence += RuleForgeLocalization.T(
+                    "; your advantage is ",
+                    "；你的优势是") + rewards[0];
+            }
+            if (penalties.Count > 0)
+            {
+                sentence += RuleForgeLocalization.T(
+                    "; the cost is ",
+                    "；代价是") + penalties[0];
+            }
+            if (neutral.Count > 0 && rewards.Count == 0)
+            {
+                sentence += RuleForgeLocalization.T(
+                    "; meanwhile ",
+                    "；同时") + neutral[0];
             }
 
+            return sentence.TrimEnd('。', '.') +
+                   RuleForgeLocalization.T(".", "。");
+        }
+
+        private void DrawBalanceDetails()
+        {
             BalanceEvaluation balance = IsCurrentDraftValidated()
                 ? currentDraftBalance
                 : null;
-            GUILayout.Label(RuleForgeLocalization.T("Risk Level", "风险等级"));
-            GUILayout.Label(balance != null
-                ? RuleForgeLocalization.DataValue(balance.Result.ToString())
-                : RuleForgeLocalization.T("Not checked", "尚未检查"));
-            if (balance != null)
+            if (balance == null)
             {
-                string ratio = float.IsPositiveInfinity(
-                        balance.RewardPenaltyRatio)
-                    ? "∞"
-                    : balance.RewardPenaltyRatio.ToString(
-                        "0.00",
-                        CultureInfo.InvariantCulture);
-                GUILayout.Label(RuleForgeLocalization.T(
-                    $"Reward Strength  {balance.RewardScore:0.#}",
-                    $"奖励强度  {balance.RewardScore:0.#}"));
-                GUILayout.Label(RuleForgeLocalization.T(
-                    $"Risk Strength  {balance.PenaltyScore:0.#}",
-                    $"风险强度  {balance.PenaltyScore:0.#}"));
-                GUILayout.Label(RuleForgeLocalization.T(
-                    $"Reward / Risk Ratio  {ratio}",
-                    $"奖励 / 风险比例  {ratio}"));
-                GUILayout.Label(RuleForgeLocalization.T(
-                    "Estimated Difficulty  ",
-                    "预估难度  ") +
-                    RuleForgeLocalization.DataValue(
-                        balance.Difficulty.ToString()));
-                GUILayout.Label(RuleForgeLocalization.T(
-                    "Growth Speed  ",
-                    "成长速度  ") +
-                    RuleForgeLocalization.DataValue(balance.Growth.ToString()));
-                if (balance.GameplayTags.Count > 0)
-                {
-                    List<string> localizedTags = new List<string>();
-                    for (int index = 0;
-                         index < balance.GameplayTags.Count;
-                         index++)
-                    {
-                        localizedTags.Add(RuleForgeLocalization.DataValue(
-                            balance.GameplayTags[index]));
-                    }
+                return;
+            }
 
-                    GUILayout.Label(RuleForgeLocalization.T(
-                        "Tags  ",
-                        "玩法标签  ") + string.Join(" · ", localizedTags));
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "Balance details",
+                "平衡详情"), creatorSectionStyle);
+            string ratio = float.IsPositiveInfinity(
+                    balance.RewardPenaltyRatio)
+                ? "∞"
+                : balance.RewardPenaltyRatio.ToString(
+                    "0.00",
+                    CultureInfo.InvariantCulture);
+            GUILayout.Label(RuleForgeLocalization.T(
+                $"Reward {balance.RewardScore:0.#}  ·  Risk {balance.PenaltyScore:0.#}  ·  Ratio {ratio}",
+                $"奖励 {balance.RewardScore:0.#}  ·  风险 {balance.PenaltyScore:0.#}  ·  比例 {ratio}"));
+            GUILayout.Label(RuleForgeLocalization.T(
+                "Difficulty  ",
+                "难度  ") +
+                RuleForgeLocalization.DataValue(balance.Difficulty.ToString()) +
+                RuleForgeLocalization.T("  ·  Growth  ", "  ·  成长  ") +
+                RuleForgeLocalization.DataValue(balance.Growth.ToString()));
+            if (balance.GameplayTags.Count > 0)
+            {
+                List<string> localizedTags = new List<string>();
+                for (int index = 0;
+                     index < balance.GameplayTags.Count;
+                     index++)
+                {
+                    localizedTags.Add(RuleForgeLocalization.DataValue(
+                        balance.GameplayTags[index]));
                 }
+
+                GUILayout.Label(string.Join(" · ", localizedTags),
+                    creatorMutedStyle);
             }
             GUILayout.EndVertical();
         }
@@ -934,13 +1232,49 @@ namespace RuleForge.UI
                     StringComparison.OrdinalIgnoreCase))
             {
                 return RuleForgeLocalization.T(
-                    "Defeat " + target + " enemies",
-                    "击败 " + target + " 个敌人");
+                    "Defeat " + target + " enemies" +
+                    (candidate.TimeLimit > 0f
+                        ? " within " + candidate.TimeLimit.ToString("0.#") + " seconds"
+                        : string.Empty),
+                    "击败 " + target + " 个敌人" +
+                    (candidate.TimeLimit > 0f
+                        ? "，限时 " + candidate.TimeLimit.ToString("0.#") + " 秒"
+                        : string.Empty));
+            }
+
+            if (string.Equals(candidate.Goal, "TimeBankTarget",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return RuleForgeLocalization.T(
+                    "Reach a " + target + "-second time bank; hits remove time",
+                    "把时间生命积累到 " + target + " 秒；受击会扣时间");
+            }
+
+            if (string.Equals(candidate.Goal, "TimeBankSurvive",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return RuleForgeLocalization.T(
+                    "Survive " + target + " seconds with time as health",
+                    "用时间作为生命，坚持 " + target + " 秒");
+            }
+
+            if (string.Equals(candidate.Goal, "TimeBankEndless",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return RuleForgeLocalization.T(
+                    "Endless trial until the time bank runs out",
+                    "无尽试炼：时间生命耗尽时结束");
             }
 
             return RuleForgeLocalization.T(
-                "Reach " + target + " score",
-                "达到 " + target + " 分");
+                "Reach " + target + " score" +
+                (candidate.TimeLimit > 0f
+                    ? " within " + candidate.TimeLimit.ToString("0.#") + " seconds"
+                    : string.Empty),
+                "达到 " + target + " 分" +
+                (candidate.TimeLimit > 0f
+                    ? "，限时 " + candidate.TimeLimit.ToString("0.#") + " 秒"
+                    : string.Empty));
         }
 
         private string FormatEffectSummary(GameplayRule rule, RuleEffect effect)
@@ -1053,6 +1387,16 @@ namespace RuleForge.UI
             RuleEffect effect,
             float value)
         {
+            if (string.Equals(effect.Kind, RuleEffectKind.AddTime.ToString(),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return RuleForgeLocalization.T(
+                    "+" + value.ToString("0.##", CultureInfo.InvariantCulture) +
+                    " seconds",
+                    "+" + value.ToString("0.##", CultureInfo.InvariantCulture) +
+                    " 秒");
+            }
+
             if (string.Equals(
                     effect.Operation,
                     StatModifierOperation.AddPercent.ToString(),
@@ -1085,7 +1429,8 @@ namespace RuleForge.UI
             GUI.enabled = canPlay;
             if (GUILayout.Button(RuleForgeLocalization.T(
                     "PLAY THIS CHALLENGE",
-                    "开始这个玩法"), GUILayout.Height(52f)))
+                    "开始这个玩法"), creatorPlayButtonStyle,
+                    GUILayout.Height(56f)))
             {
                 ValidateAndPlay();
             }
@@ -1101,62 +1446,6 @@ namespace RuleForge.UI
 
         private void DrawModificationFlow()
         {
-            GUILayout.Space(14f);
-            GUILayout.Label(RuleForgeLocalization.T(
-                "What would you like to change?",
-                "你想怎么修改这个玩法？"), GUI.skin.box);
-            DrawPromptArea(
-                ref modificationPrompt,
-                RuleForgeLocalization.T(
-                    "For example: The penalty is too light. Increase enemy speed growth by 50% and leave everything else unchanged.",
-                    "例如：惩罚太轻了，把敌人速度成长提高 50%，其他不要改。"),
-                78f);
-
-            GUILayout.Label(RuleForgeLocalization.T(
-                "Suggestions — clicking only fills the text box",
-                "不知道怎么改？点击建议只会填入输入框"));
-            DrawPromptChips(
-                ModifySuggestionLabelsEnglish,
-                ModifySuggestionLabelsChinese,
-                ModifySuggestionsEnglish,
-                ModifySuggestionsChinese,
-                value => modificationPrompt = value,
-                3);
-
-            bool canModify = CanUseRealAI() &&
-                             !aiController.IsBusy &&
-                             !string.IsNullOrWhiteSpace(modificationPrompt) &&
-                             pendingModification == null;
-            GUI.enabled = canModify;
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "ASK AI TO ANALYZE THE CHANGE",
-                    "让 AI 分析修改建议"), GUILayout.Height(42f)))
-            {
-                if (TryBuildCandidate(
-                        out ChallengeSpec current,
-                        out string error))
-                {
-                    modificationBase = JsonUtility.FromJson<ChallengeSpec>(
-                        JsonUtility.ToJson(current));
-                    pendingModificationDiff.Clear();
-                    modificationProposal = null;
-                    modificationProposalPrompt = modificationPrompt;
-                    modificationRequestSignature = BuildDraftSignature();
-                    statusMessage = RuleForgeLocalization.T(
-                        "AI is identifying the smallest relevant change...",
-                        "AI 正在判断最相关的最小修改……");
-                    aiController.AnalyzeModification(
-                        modificationPrompt,
-                        current,
-                        HandleModificationProposal);
-                }
-                else
-                {
-                    statusMessage = error;
-                }
-            }
-
-            GUI.enabled = true;
             DrawModificationProposal();
             DrawPendingModification();
         }
@@ -1243,7 +1532,7 @@ namespace RuleForge.UI
                 return;
             }
 
-            modificationPrompt = intent;
+            designerPrompt = intent;
             modificationProposalPrompt = intent;
             modificationBase = JsonUtility.FromJson<ChallengeSpec>(
                 JsonUtility.ToJson(current));
@@ -1268,18 +1557,15 @@ namespace RuleForge.UI
 
             GUILayout.Space(8f);
             GUILayout.BeginVertical(GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T("USER", "玩家"));
-            GUILayout.Label(modificationProposalPrompt, GUI.skin.box);
             GUILayout.Label(RuleForgeLocalization.T(
-                "AI CHANGE PROPOSAL", "AI 修改提案"), GUI.skin.box);
-            GUILayout.Label(modificationProposal.Summary);
-            DrawStringList(modificationProposal.ProposedChanges);
-            if (!string.IsNullOrWhiteSpace(
-                    modificationProposal.DesignReasoningSummary))
+                "AI CHANGE PROPOSAL", "AI 修改提案"), creatorSectionStyle);
+            GUILayout.Label(modificationProposal.Summary, creatorPitchStyle);
+            if (modificationProposal.Warnings.Length > 0 &&
+                !string.IsNullOrWhiteSpace(modificationProposal.Warnings[0]))
             {
-                GUILayout.Label(modificationProposal.DesignReasoningSummary);
+                GUILayout.Label(modificationProposal.Warnings[0],
+                    creatorWarningStyle);
             }
-            DrawStringList(modificationProposal.Warnings);
             if (!string.IsNullOrWhiteSpace(
                     modificationProposal.ClarificationQuestion))
             {
@@ -1380,6 +1666,8 @@ namespace RuleForge.UI
                 ChallengeSpec accepted = pendingModification;
                 ClearPendingModification();
                 LoadChallengeForEditing(accepted);
+                hasUnplayedPreview = true;
+                designerPrompt = string.Empty;
                 ValidationResult validation = ruleEngine.ValidateChallenge(
                     accepted,
                     rewardStrength,
@@ -1425,6 +1713,15 @@ namespace RuleForge.UI
                 GoalOptions,
                 value => goal = value);
             DrawTextField(GetGoalTargetLabel(), ref goalTargetText);
+            DrawTextField(RuleForgeLocalization.T(
+                "Time Limit (0 = none)", "限时秒数（0 为不限时）"),
+                ref timeLimitText);
+            if (goal.StartsWith("TimeBank", StringComparison.OrdinalIgnoreCase))
+            {
+                DrawTextField(RuleForgeLocalization.T(
+                    "Seconds lost per damage point",
+                    "每点伤害扣除秒数"), ref timeDamageScaleText);
+            }
             DrawDropdown(
                 "challenge-weapon",
                 RuleForgeLocalization.T("Weapon", "武器"),
@@ -1491,17 +1788,19 @@ namespace RuleForge.UI
                     : RuleForgeLocalization.T("None", "无")));
             GUI.enabled = aiController != null && !aiController.IsBusy;
             if (GUILayout.Button(RuleForgeLocalization.T(
-                    "Switch Provider",
-                    "切换 Provider"), GUILayout.Width(180f)))
+                    "Refresh Provider",
+                    "刷新 Provider"), GUILayout.Width(180f)))
             {
-                aiController.SelectNextProvider();
+                aiController.RefreshProviderSelection();
                 statusMessage = RuleForgeLocalization.T(
-                    "Selected provider: ",
-                    "已选择 Provider：") + aiController.ActiveProviderName;
+                    "Current provider: ",
+                    "当前 Provider：") + aiController.ActiveProviderName;
             }
 
             GUI.enabled = true;
-            DrawRuntimeApiKeySetup();
+            GUILayout.Label(RuleForgeLocalization.T(
+                "AI connection settings are available from the button at the top of this panel.",
+                "AI 连接配置请使用面板顶部的“配置 AI / AI 设置”按钮。"));
             DrawReadOnlyDiagnosticText(
                 RuleForgeLocalization.T(
                     "Original Generate Prompt",
@@ -1515,6 +1814,9 @@ namespace RuleForge.UI
                     "最近修改请求"),
                 lastModificationPrompt);
             DrawValidationFeedback();
+            DrawReadOnlyDiagnosticText(
+                RuleForgeLocalization.T("Latest AI error", "最近的 AI 错误"),
+                lastAIDiagnostic);
             if (TryBuildCandidate(out ChallengeSpec candidate, out _))
             {
                 GUILayout.Label(RuleForgeLocalization.T(
@@ -1528,84 +1830,6 @@ namespace RuleForge.UI
             }
 
             GUILayout.EndVertical();
-        }
-
-        private void DrawRuntimeApiKeySetup()
-        {
-            GUILayout.Space(8f);
-            GUILayout.Label(RuleForgeLocalization.T(
-                "OpenAI API Key — local testing only",
-                "OpenAI API Key — 仅限本地试玩"), GUI.skin.box);
-            GUILayout.Label(RuleForgeLocalization.T(
-                "Use your own key. Never send it to the game author. Direct keys in client apps are not suitable for public distribution.",
-                "请使用试玩者自己的 Key，不要发给游戏作者。客户端直连方式不适合公开发行。"));
-
-            apiKeyDraft = GUILayout.PasswordField(
-                apiKeyDraft ?? string.Empty,
-                '•',
-                GUILayout.Height(28f));
-            rememberApiKeyOnThisComputer = GUILayout.Toggle(
-                rememberApiKeyOnThisComputer,
-                RuleForgeLocalization.T(
-                    "Remember on this computer (not recommended on shared PCs)",
-                    "记住到这台电脑（共用电脑不推荐）"));
-
-            GUILayout.BeginHorizontal();
-            GUI.enabled = !string.IsNullOrWhiteSpace(apiKeyDraft) &&
-                          (aiController == null || !aiController.IsBusy);
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "Use API Key",
-                    "使用这个 API Key"), GUILayout.Height(30f)))
-            {
-                if (RuntimeOpenAICredentials.TrySet(
-                        apiKeyDraft,
-                        rememberApiKeyOnThisComputer,
-                        out string error))
-                {
-                    apiKeyDraft = string.Empty;
-                    aiController?.RefreshProviderSelection();
-                    apiKeyStatus = RuleForgeLocalization.T(
-                        "API Key is active. Generate will use the real OpenAI provider.",
-                        "API Key 已启用，Generate 将使用真实 OpenAI Provider。" );
-                }
-                else
-                {
-                    apiKeyStatus = error;
-                }
-            }
-
-            GUI.enabled = RuntimeOpenAICredentials.HasSessionKey ||
-                          RuntimeOpenAICredentials.HasSavedKey;
-            if (GUILayout.Button(RuleForgeLocalization.T(
-                    "Clear Local Key",
-                    "清除本机 Key"), GUILayout.Height(30f)))
-            {
-                RuntimeOpenAICredentials.Clear();
-                apiKeyDraft = string.Empty;
-                aiController?.RefreshProviderSelection();
-                apiKeyStatus = RuleForgeLocalization.T(
-                    "The locally entered API Key was cleared.",
-                    "已清除本机输入的 API Key。" );
-            }
-
-            GUI.enabled = true;
-            GUILayout.EndHorizontal();
-            GUILayout.Label(
-                RuntimeOpenAICredentials.HasSessionKey
-                    ? RuleForgeLocalization.T(
-                        RuntimeOpenAICredentials.HasSavedKey
-                            ? "Local API Key status: Active and remembered"
-                            : "Local API Key status: Active for this session",
-                        RuntimeOpenAICredentials.HasSavedKey
-                            ? "本机 API Key 状态：已启用并记住"
-                            : "本机 API Key 状态：仅本次运行启用")
-                    : RuleForgeLocalization.T(
-                        "Local API Key status: Not configured",
-                        "本机 API Key 状态：未配置"));
-            if (!string.IsNullOrWhiteSpace(apiKeyStatus))
-            {
-                GUILayout.Label(apiKeyStatus, GUI.skin.box);
-            }
         }
 
         private static void DrawReadOnlyDiagnosticText(
@@ -2024,27 +2248,67 @@ namespace RuleForge.UI
                     return RuleForgeLocalization.T(
                         "Mock Provider Active", "模拟 Provider 已启用");
                 case AIProviderKind.Real:
-                    return aiController.ActiveProviderIsConfigured
-                        ? RuleForgeLocalization.T(
-                            "Real AI Provider Active", "真实 AI Provider 已启用")
-                        : RuleForgeLocalization.T(
-                            "Real AI Provider Not Configured", "真实 AI Provider 未配置");
+                    switch (aiController.ActiveProviderConnectionState)
+                    {
+                        case AIProviderConnectionState.Verified:
+                            return RuleForgeLocalization.T(
+                                "Real AI Connection Verified",
+                                "真实 AI 连接已验证");
+                        case AIProviderConnectionState.Verifying:
+                            return RuleForgeLocalization.T(
+                                "Verifying AI Connection",
+                                "正在验证 AI 连接");
+                        case AIProviderConnectionState.Failed:
+                            return RuleForgeLocalization.T(
+                                "AI Connection Failed",
+                                "AI 连接失败");
+                        case AIProviderConnectionState.Unverified:
+                            return RuleForgeLocalization.T(
+                                "Credentials Present — Not Verified",
+                                "已有凭据 — 尚未验证");
+                        default:
+                            return RuleForgeLocalization.T(
+                                "Real AI Provider Not Configured",
+                                "真实 AI Provider 未配置");
+                    }
                 default:
                     return RuleForgeLocalization.T("AI Not Connected", "AI 未连接");
             }
+        }
+
+        private string BuildAIAvailabilityMessage()
+        {
+            if (aiController == null ||
+                aiController.ActiveProviderKind == AIProviderKind.Unknown)
+            {
+                return RuleForgeLocalization.T(
+                    "AI component is missing. Check the Arena scene setup.",
+                    "场景中缺少 AI 组件，请检查 Arena 的接线。");
+            }
+
+            if (aiController.ActiveProviderKind == AIProviderKind.Mock)
+            {
+                return RuleForgeLocalization.T(
+                    "Offline Mock is selected. Use AI Settings at the top to configure a real provider.",
+                    "当前选中离线 Mock。请点顶部“AI 设置”配置真实 Provider。");
+            }
+
+            return RuleForgeLocalization.T(
+                "The selected provider is not configured: ",
+                "当前 Provider 尚未配置：") +
+                aiController.ActiveProviderConnectionMessage;
         }
 
         private void HandleAIGenerationPreview(AIChallengePreview preview)
         {
             if (preview == null || !preview.Success)
             {
-                statusMessage = preview != null
-                    ? preview.Error
-                    : RuleForgeLocalization.T(
-                        "AI provider returned no preview.",
-                        "AI Provider 没有返回预览。" );
+                SetPreviewFailure(preview);
                 return;
             }
+
+            lastAIDiagnostic = string.Empty;
+            showAIDiagnostic = false;
 
             if (preview.RequiresRepairConfirmation)
             {
@@ -2059,6 +2323,11 @@ namespace RuleForge.UI
             lastGeneratedPrompt = gameplayProposalPrompt;
             lastModificationPrompt = string.Empty;
             LoadChallengeForEditing(preview.Challenge);
+            hasGeneratedDraftThisSession = true;
+            hasUnplayedPreview = true;
+            scrollPosition = Vector2.zero;
+            gameplayProposal = null;
+            designerPrompt = string.Empty;
             ValidationResult currentValidation = ruleEngine.ValidateChallenge(
                 preview.Challenge,
                 rewardStrength,
@@ -2076,6 +2345,33 @@ namespace RuleForge.UI
                     " — 验证器拒绝。请打开“高级编辑”修正。" );
         }
 
+        private void SetPreviewFailure(AIChallengePreview preview)
+        {
+            lastAIDiagnostic = preview != null
+                ? preview.Error
+                : string.Empty;
+            showAIDiagnostic = false;
+            bool validationFailure = lastAIDiagnostic.StartsWith(
+                "AI repair", StringComparison.OrdinalIgnoreCase) ||
+                lastAIDiagnostic.StartsWith(
+                    "Validator rejected", StringComparison.OrdinalIgnoreCase);
+            bool intentFailure = lastAIDiagnostic.StartsWith(
+                "AI intent mismatch", StringComparison.OrdinalIgnoreCase);
+            statusMessage = intentFailure
+                ? RuleForgeLocalization.T(
+                    "The AI result changed the confirmed core gameplay, so it was not applied. Refine the proposal or try generating again; see error details below.",
+                    "AI 结果改掉了你确认的核心玩法，已阻止应用。请调整提案或重新生成；具体差异可在错误详情查看。")
+                : validationFailure
+                ? RuleForgeLocalization.T(
+                    "AI could not produce a legal version of this idea. The current challenge was not changed. Revise the proposal or expand the error details below.",
+                    "AI 还没能把这个想法修成合法玩法，当前挑战未改变。请调整提案后重试，或展开下方错误详情。")
+                : preview != null
+                    ? preview.Error
+                    : RuleForgeLocalization.T(
+                        "AI provider returned no preview.",
+                        "AI Provider 没有返回预览。");
+        }
+
         private void HandleAIModificationPreview(AIChallengePreview preview)
         {
             if (!IsExpectedDraft(patchRequestSignature))
@@ -2087,13 +2383,12 @@ namespace RuleForge.UI
 
             if (preview == null || !preview.Success)
             {
-                statusMessage = preview != null
-                    ? preview.Error
-                    : RuleForgeLocalization.T(
-                        "AI provider returned no modification preview.",
-                        "AI Provider 没有返回修改预览。" );
+                SetPreviewFailure(preview);
                 return;
             }
+
+            lastAIDiagnostic = string.Empty;
+            showAIDiagnostic = false;
 
             if (preview.Validation == null || !preview.Validation.IsValid)
             {
@@ -2109,7 +2404,7 @@ namespace RuleForge.UI
             pendingModificationPreview = preview;
             lastModificationPrompt = modificationProposal != null
                 ? modificationProposal.PatchInstruction
-                : modificationPrompt;
+                : designerPrompt;
             BuildChallengeDiff(
                 modificationBase,
                 pendingModification,
@@ -2141,7 +2436,11 @@ namespace RuleForge.UI
             }
 
             gameplayProposal = result.Value;
-            statusMessage = gameplayProposal.CanGenerate
+            showProposalRevision = false;
+            proposalPenaltyRewardRatio = gameplayProposal.PenaltyRewardRatio;
+            designerPrompt = string.Empty;
+            statusMessage = gameplayProposal.CanGenerate &&
+                            gameplayProposal.WithinVocabulary
                 ? RuleForgeLocalization.T(
                     "Review the proposal, then choose Generate This.",
                     "请先审核 AI 的玩法提案，再选择“按这个方案生成”。")
@@ -2171,6 +2470,10 @@ namespace RuleForge.UI
             }
 
             modificationProposal = result.Value;
+            if (modificationProposal.CanModify)
+            {
+                designerPrompt = string.Empty;
+            }
             statusMessage = modificationProposal.CanModify
                 ? RuleForgeLocalization.T(
                     "Review the smallest proposed change before building a patch.",
@@ -2232,14 +2535,27 @@ namespace RuleForge.UI
             GUILayout.Space(8f);
             GUILayout.BeginVertical(GUI.skin.box);
             GUILayout.Label(RuleForgeLocalization.T(
-                "VALIDATOR REPAIR PROPOSAL", "验证器修复提案"), GUI.skin.box);
-            DrawStringList(pendingGenerationRepair.RepairSourceErrors);
+                "A VALID VERSION IS READY", "已有可用的修正版"), GUI.skin.box);
+            GUILayout.Label(RuleForgeLocalization.T(
+                "The first version failed validation. This revised version passed; review it before applying.",
+                "初版未通过验证；下面的修正版已通过，请确认后再应用。"));
             GUILayout.Label(pendingGenerationRepair.RepairSummary);
             DrawStringList(pendingGenerationRepair.RepairChanges);
             if (!string.IsNullOrWhiteSpace(
                     pendingGenerationRepair.RepairReasoning))
             {
                 GUILayout.Label(pendingGenerationRepair.RepairReasoning);
+            }
+
+            showAIDiagnostic = GUILayout.Toggle(
+                showAIDiagnostic,
+                RuleForgeLocalization.T(
+                    "Show original validation errors", "查看初版验证错误"),
+                creatorSecondaryButtonStyle,
+                GUILayout.Height(30f));
+            if (showAIDiagnostic)
+            {
+                DrawStringList(pendingGenerationRepair.RepairSourceErrors);
             }
 
             GUILayout.BeginHorizontal();
@@ -2252,6 +2568,11 @@ namespace RuleForge.UI
                 ClearPendingModification();
                 lastGeneratedPrompt = gameplayProposalPrompt;
                 LoadChallengeForEditing(accepted.Challenge);
+                hasGeneratedDraftThisSession = true;
+                hasUnplayedPreview = true;
+                scrollPosition = Vector2.zero;
+                gameplayProposal = null;
+                designerPrompt = string.Empty;
                 ruleEngine.ValidateChallenge(
                     accepted.Challenge, rewardStrength, penaltyStrength);
                 CaptureCurrentValidation();
@@ -2264,7 +2585,8 @@ namespace RuleForge.UI
                     "ADJUST AGAIN", "继续调整")))
             {
                 pendingGenerationRepair = null;
-                proposalRefinement = RuleForgeLocalization.T(
+                showProposalRevision = true;
+                designerPrompt = RuleForgeLocalization.T(
                     "Propose another legal version while preserving the core idea.",
                     "保留核心想法，再提出一个符合系统限制的方案。" );
                 statusMessage = RuleForgeLocalization.T(
@@ -2532,21 +2854,73 @@ namespace RuleForge.UI
                     }
                 });
 
-            DrawTextField(
-                draft.IsPercent
-                    ? RuleForgeLocalization.T("Value %", "数值 %")
-                    : RuleForgeLocalization.T("Value", "数值"),
-                ref draft.ValueText);
-            DrawTextField(RuleForgeLocalization.T(
-                "Max Stack", "最大层数"), ref draft.MaxStacksText);
-            DrawTextField(RuleForgeLocalization.T(
-                "Duration sec", "持续秒数"), ref draft.DurationText);
-            if (draft.HasScaling)
+            if (!draft.IsSpawnEnemy)
             {
+                DrawTextField(
+                    draft.IsPercent
+                        ? RuleForgeLocalization.T("Value %", "数值 %")
+                        : RuleForgeLocalization.T("Value", "数值"),
+                    ref draft.ValueText);
+            }
+            if (draft.IsStatModifier)
+            {
+                bool scalingEnabled = GUILayout.Toggle(
+                    draft.HasScaling,
+                    RuleForgeLocalization.T(
+                        "Scale with a runtime value", "按运行时数据动态变化"));
+                if (scalingEnabled != draft.HasScaling)
+                {
+                    draft.SetScalingEnabled(scalingEnabled);
+                }
+
+                if (draft.HasScaling)
+                {
+                    DrawDropdown(
+                        $"rule-{ruleIndex}-effect-{effectIndex}-scale-source",
+                        RuleForgeLocalization.T("Scaling Source", "变化依据"),
+                        draft.ScalingSource,
+                        ScalingSourceOptions,
+                        draft.SetScalingSource);
+                    DrawTextField(RuleForgeLocalization.T(
+                        "Source Minimum", "依据最小值"),
+                        ref draft.ScalingSourceMinText);
+                    DrawTextField(RuleForgeLocalization.T(
+                        "Source Maximum", "依据最大值"),
+                        ref draft.ScalingSourceMaxText);
+                    DrawTextField(draft.IsPercent
+                            ? RuleForgeLocalization.T(
+                                "Effect Minimum %", "效果最小值 %")
+                            : RuleForgeLocalization.T(
+                                "Effect Minimum", "效果最小值"),
+                        ref draft.ScalingMinText);
+                    DrawTextField(draft.IsPercent
+                            ? RuleForgeLocalization.T(
+                                "Effect Maximum %", "效果最大值 %")
+                            : RuleForgeLocalization.T(
+                                "Effect Maximum", "效果最大值"),
+                        ref draft.ScalingMaxText);
+                }
+                else
+                {
+                    DrawDropdown(
+                        $"rule-{ruleIndex}-effect-{effectIndex}-stack",
+                        RuleForgeLocalization.T("Stacking", "叠加方式"),
+                        draft.StackMode,
+                        StackModeOptions,
+                        draft.SetStackMode);
+                    if (string.Equals(draft.StackMode,
+                            RuleStackMode.Stack.ToString(),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        DrawTextField(RuleForgeLocalization.T(
+                            "Max Stack", "最大层数"),
+                            ref draft.MaxStacksText);
+                    }
+                }
+
                 DrawTextField(RuleForgeLocalization.T(
-                    "Scaling Min %", "缩放最小值 %"), ref draft.ScalingMinText);
-                DrawTextField(RuleForgeLocalization.T(
-                    "Scaling Max %", "缩放最大值 %"), ref draft.ScalingMaxText);
+                    "Duration sec (0 = persistent)",
+                    "持续秒数（0 为永久）"), ref draft.DurationText);
             }
 
             bool delete = GUILayout.Button(RuleForgeLocalization.T(
@@ -2682,10 +3056,9 @@ namespace RuleForge.UI
             }
 
             ruleEngine.RestartChallenge();
+            hasUnplayedPreview = false;
             RebuildFromActiveChallenge();
-            statusMessage = RuleForgeLocalization.T(
-                "Challenge validated and restarted. Press F2 to play.",
-                "挑战已验证并重启。按 F2 返回创建器。" );
+            SetOpen(false);
         }
 
         private void ValidatePreview()
@@ -2728,10 +3101,30 @@ namespace RuleForge.UI
                 return false;
             }
 
-            if (!TryParseFloat(goalTargetText, out float goalTarget))
+            if (!ChallengeCreatorDraftParser.TryParseFloat(
+                    goalTargetText, out float goalTarget))
             {
                 error = RuleForgeLocalization.T(
                     "Goal Target must be a number.", "目标数值必须是数字。" );
+                return false;
+            }
+
+            if (!ChallengeCreatorDraftParser.TryParseFloat(
+                    timeLimitText, out float timeLimit))
+            {
+                error = RuleForgeLocalization.T(
+                    "Time Limit must be a number.", "限时秒数必须是数字。");
+                return false;
+            }
+
+            float timeDamageScale = 0f;
+            if (goal.StartsWith("TimeBank", StringComparison.OrdinalIgnoreCase) &&
+                !ChallengeCreatorDraftParser.TryParseFloat(
+                    timeDamageScaleText, out timeDamageScale))
+            {
+                error = RuleForgeLocalization.T(
+                    "Seconds lost per damage point must be a number.",
+                    "每点伤害扣除秒数必须是数字。");
                 return false;
             }
 
@@ -2750,7 +3143,9 @@ namespace RuleForge.UI
                 goal.Trim(),
                 goalTarget,
                 weapon.Trim(),
-                rules);
+                rules,
+                timeLimit,
+                timeDamageScale);
             error = string.Empty;
             return true;
         }
@@ -2890,354 +3285,5 @@ namespace RuleForge.UI
             GUILayout.EndHorizontal();
         }
 
-        private static bool TryParseFloat(string text, out float value)
-        {
-            return float.TryParse(
-                       text,
-                       NumberStyles.Float,
-                       CultureInfo.InvariantCulture,
-                       out value) ||
-                   float.TryParse(
-                       text,
-                       NumberStyles.Float,
-                       CultureInfo.CurrentCulture,
-                       out value);
-        }
-
-        private sealed class RuleDraft
-        {
-            public RuleDraft(GameplayRule rule, int fallbackNumber)
-            {
-                Id = string.IsNullOrWhiteSpace(rule.Id)
-                    ? $"manual_rule_{fallbackNumber:00}"
-                    : rule.Id;
-                TriggerType = rule.Trigger != null &&
-                              !string.IsNullOrWhiteSpace(rule.Trigger.Type)
-                    ? rule.Trigger.Type
-                    : TriggerOptions.Length > 0
-                        ? TriggerOptions[0]
-                        : string.Empty;
-                RuleCondition[] conditions = rule.Conditions;
-                for (int index = 0; index < conditions.Length; index++)
-                {
-                    if (conditions[index] != null)
-                    {
-                        Conditions.Add(new ConditionDraft(conditions[index]));
-                    }
-                }
-                RuleEffect[] effects = rule.Effects;
-                for (int index = 0; index < effects.Length; index++)
-                {
-                    if (effects[index] != null)
-                    {
-                        Effects.Add(new EffectDraft(effects[index]));
-                    }
-                }
-            }
-
-            public RuleDraft(string id, string triggerType)
-            {
-                Id = id;
-                TriggerType = triggerType;
-            }
-
-            public string Id;
-            public string TriggerType;
-            public List<ConditionDraft> Conditions { get; } =
-                new List<ConditionDraft>();
-            public List<EffectDraft> Effects { get; } =
-                new List<EffectDraft>();
-
-            public bool TryBuild(out GameplayRule rule, out string error)
-            {
-                RuleCondition[] conditions = new RuleCondition[Conditions.Count];
-                for (int index = 0; index < Conditions.Count; index++)
-                {
-                    if (!Conditions[index].TryBuild(out conditions[index], out error))
-                    {
-                        rule = null;
-                        return false;
-                    }
-                }
-
-                RuleEffect[] effects = new RuleEffect[Effects.Count];
-                for (int index = 0; index < Effects.Count; index++)
-                {
-                    if (!Effects[index].TryBuild(out effects[index], out error))
-                    {
-                        rule = null;
-                        return false;
-                    }
-                }
-
-                rule = GameplayRule.Create(
-                    Id,
-                    TriggerType,
-                    conditions,
-                    effects);
-                error = string.Empty;
-                return true;
-            }
-        }
-
-        private sealed class ConditionDraft
-        {
-            public ConditionDraft()
-            {
-                Type = RuleConditionType.Always.ToString();
-                Comparison = RuleComparison.Equals.ToString();
-                ValueText = "0";
-                StringValue = string.Empty;
-            }
-
-            public ConditionDraft(RuleCondition condition)
-            {
-                Type = string.IsNullOrWhiteSpace(condition.Type)
-                    ? RuleConditionType.Always.ToString()
-                    : condition.Type;
-                Comparison = condition.Comparison;
-                ValueText = string.Equals(
-                        Type,
-                        RuleConditionType.RandomChance.ToString(),
-                        StringComparison.OrdinalIgnoreCase)
-                    ? (condition.Value * 100f).ToString("0.###", CultureInfo.InvariantCulture)
-                    : condition.Value.ToString("0.###", CultureInfo.InvariantCulture);
-                StringValue = condition.StringValue;
-            }
-
-            public string Type;
-            public string Comparison;
-            public string ValueText;
-            public string StringValue;
-
-            public void SetType(string type)
-            {
-                Type = type;
-                bool usesComparison =
-                    string.Equals(
-                        Type,
-                        RuleConditionType.EnemyType.ToString(),
-                        StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(
-                        Type,
-                        RuleConditionType.EventValue.ToString(),
-                        StringComparison.OrdinalIgnoreCase);
-                if (!usesComparison)
-                {
-                    Comparison = string.Empty;
-                    StringValue = string.Empty;
-                }
-                else
-                {
-                    if (string.IsNullOrWhiteSpace(Comparison))
-                    {
-                        Comparison = RuleComparison.Equals.ToString();
-                    }
-
-                    if (string.Equals(
-                            Type,
-                            RuleConditionType.EnemyType.ToString(),
-                            StringComparison.OrdinalIgnoreCase) &&
-                        string.IsNullOrWhiteSpace(StringValue))
-                    {
-                        StringValue = EnemyTypeOptions[0];
-                    }
-                    else if (string.Equals(
-                                 Type,
-                                 RuleConditionType.EventValue.ToString(),
-                                 StringComparison.OrdinalIgnoreCase))
-                    {
-                        StringValue = string.Empty;
-                    }
-                }
-            }
-
-            public bool TryBuild(out RuleCondition condition, out string error)
-            {
-                float value = 0f;
-                if (!string.Equals(Type, RuleConditionType.Always.ToString(),
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !TryParseFloat(ValueText, out value))
-                {
-                    condition = null;
-                    error = RuleForgeLocalization.T(
-                        $"Invalid condition value in {Type}.",
-                        $"条件 {RuleForgeLocalization.DataValue(Type)} 的数值无效。" );
-                    return false;
-                }
-
-                if (string.Equals(Type, RuleConditionType.RandomChance.ToString(),
-                        StringComparison.OrdinalIgnoreCase))
-                {
-                    value /= 100f;
-                }
-
-                condition = RuleCondition.Create(
-                    Type,
-                    string.Equals(Type, RuleConditionType.Always.ToString(),
-                            StringComparison.OrdinalIgnoreCase)
-                        ? string.Empty
-                        : Comparison,
-                    value,
-                    StringValue);
-                error = string.Empty;
-                return true;
-            }
-        }
-
-        private sealed class EffectDraft
-        {
-            private string kind;
-            private string target;
-            private string statId;
-            private string operation;
-            private string stringValue;
-            private string stackMode;
-            private float duration;
-            private bool hasScaling;
-            private string scalingSource;
-            private string scalingMode;
-            private float scalingSourceMin;
-            private float scalingSourceMax;
-
-            public EffectDraft(RuleEffect effect)
-            {
-                EffectId = effect.EffectId;
-                kind = effect.Kind;
-                target = effect.Target;
-                statId = effect.StatId;
-                operation = effect.Operation;
-                stringValue = effect.StringValue;
-                stackMode = effect.StackMode;
-                duration = effect.Duration;
-                ValueText = FormatValue(effect.Value, IsPercent);
-                MaxStacksText = effect.MaxStacks.ToString(
-                    CultureInfo.InvariantCulture);
-                DurationText = duration.ToString(
-                    "0.###",
-                    CultureInfo.InvariantCulture);
-
-                RuleScaling scaling = effect.Scaling;
-                hasScaling = scaling != null &&
-                             !string.IsNullOrWhiteSpace(scaling.Source);
-                if (hasScaling)
-                {
-                    scalingSource = scaling.Source;
-                    scalingMode = scaling.Mode;
-                    scalingSourceMin = scaling.SourceMin;
-                    scalingSourceMax = scaling.SourceMax;
-                    ScalingMinText = FormatValue(scaling.EffectMin, true);
-                    ScalingMaxText = FormatValue(scaling.EffectMax, true);
-                }
-            }
-
-            public EffectDraft(EffectDefinition definition)
-            {
-                ApplyTemplate(definition);
-            }
-
-            public string EffectId { get; private set; }
-            public bool IsPercent => string.Equals(
-                operation,
-                StatModifierOperation.AddPercent.ToString(),
-                StringComparison.OrdinalIgnoreCase);
-            public bool HasScaling => hasScaling;
-            public string ValueText = "0";
-            public string MaxStacksText = "1";
-            public string DurationText = "0";
-            public string ScalingMinText = "0";
-            public string ScalingMaxText = "0";
-
-            public void ApplyTemplate(EffectDefinition definition)
-            {
-                EffectId = definition.EffectId;
-                kind = definition.CreatorKind;
-                target = definition.CreatorTarget;
-                statId = definition.CreatorStatId;
-                operation = definition.CreatorOperation;
-                stringValue = definition.CreatorStringValue;
-                stackMode = definition.CreatorStackMode;
-                duration = 0f;
-                hasScaling = false;
-                scalingSource = string.Empty;
-                scalingMode = string.Empty;
-                scalingSourceMin = 0f;
-                scalingSourceMax = 1f;
-                ScalingMinText = "0";
-                ScalingMaxText = "0";
-                ValueText = FormatValue(
-                    definition.CreatorDefaultValue,
-                    IsPercent);
-                MaxStacksText = definition.CreatorMaxStacks.ToString(
-                    CultureInfo.InvariantCulture);
-                DurationText = "0";
-            }
-
-            public bool TryBuild(out RuleEffect effect, out string error)
-            {
-                if (!TryParseFloat(ValueText, out float value) ||
-                    !TryParseFloat(DurationText, out float parsedDuration) ||
-                    !int.TryParse(
-                        MaxStacksText,
-                        NumberStyles.Integer,
-                        CultureInfo.InvariantCulture,
-                        out int maxStacks))
-                {
-                    effect = null;
-                    error = RuleForgeLocalization.T(
-                        $"Invalid Value, Max Stack, or Duration in '{EffectId}'.",
-                        $"效果“{RuleForgeLocalization.EffectName(EffectId, EffectId)}”的数值、最大层数或持续时间无效。" );
-                    return false;
-                }
-
-                if (IsPercent)
-                {
-                    value /= 100f;
-                }
-
-                RuleScaling scaling = null;
-                if (hasScaling)
-                {
-                    if (!TryParseFloat(ScalingMinText, out float scalingMin) ||
-                        !TryParseFloat(ScalingMaxText, out float scalingMax))
-                    {
-                        effect = null;
-                        error = RuleForgeLocalization.T(
-                            $"Invalid scaling values in '{EffectId}'.",
-                            $"效果“{RuleForgeLocalization.EffectName(EffectId, EffectId)}”的缩放数值无效。" );
-                        return false;
-                    }
-
-                    scaling = RuleScaling.Create(
-                        scalingSource,
-                        scalingMode,
-                        scalingSourceMin,
-                        scalingSourceMax,
-                        scalingMin / 100f,
-                        scalingMax / 100f);
-                }
-
-                effect = RuleEffect.Create(
-                    EffectId,
-                    kind,
-                    target,
-                    statId,
-                    operation,
-                    value,
-                    stringValue,
-                    stackMode,
-                    maxStacks,
-                    parsedDuration,
-                    scaling);
-                error = string.Empty;
-                return true;
-            }
-
-            private static string FormatValue(float value, bool percent)
-            {
-                float displayed = percent ? value * 100f : value;
-                return displayed.ToString("0.###", CultureInfo.InvariantCulture);
-            }
-        }
     }
 }

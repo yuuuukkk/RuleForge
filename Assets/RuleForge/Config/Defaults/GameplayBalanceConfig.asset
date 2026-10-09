@@ -81,5 +81,33 @@ MonoBehaviour:
     minimumValue: -0.5
     maximumValue: -0.03
     maximumStackedMagnitude: 0.7
+  - effectId: AddTime
+    minimumValue: 0.1
+    maximumValue: 10
+    maximumStackedMagnitude: 0
+  - effectId: PlayerMaxHealthBonus
+    minimumValue: 0.03
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
+  - effectId: PlayerMaxHealthPenalty
+    minimumValue: -0.5
+    maximumValue: -0.03
+    maximumStackedMagnitude: 0.75
+  - effectId: PlayerJumpHeight
+    minimumValue: 0.03
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
+  - effectId: WeaponRange
+    minimumValue: 0.03
+    maximumValue: 1
+    maximumStackedMagnitude: 2
+  - effectId: WeaponMagazineCapacity
+    minimumValue: 0.03
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
+  - effectId: EnemyTurnSpeed
+    minimumValue: 0.03
+    maximumValue: 0.5
+    maximumStackedMagnitude: 1
   balancedRatioMinimum: 0.75
   balancedRatioMaximum: 1.25

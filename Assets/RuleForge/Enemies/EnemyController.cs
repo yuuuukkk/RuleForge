@@ -76,6 +76,11 @@ namespace RuleForge.Enemies
             }
 
             characterController.SimpleMove(Vector3.zero);
+            if (!HasClearAttackPath())
+            {
+                CancelPendingAttack();
+                return;
+            }
             TryAttack(direction);
         }
 
@@ -199,7 +204,8 @@ namespace RuleForge.Enemies
             if (Time.time < nextDashTime ||
                 distance <= minimumDashDistance ||
                 distance > 11f ||
-                direction.sqrMagnitude <= 0f)
+                direction.sqrMagnitude <= 0f ||
+                !HasClearAttackPath())
             {
                 return false;
             }
@@ -221,6 +227,34 @@ namespace RuleForge.Enemies
             return config != null
                 ? config.AttackWindupMultiplier
                 : 1f;
+        }
+
+        private bool HasClearAttackPath()
+        {
+            if (targetHealth == null)
+            {
+                return false;
+            }
+
+            Vector3 origin = transform.position + Vector3.up * 1.2f;
+            Vector3 destination = targetHealth.transform.position +
+                                  Vector3.up * 1.2f;
+            Vector3 ray = destination - origin;
+            float distance = ray.magnitude;
+            if (distance <= 0.01f)
+            {
+                return true;
+            }
+
+            if (!Physics.Raycast(origin, ray / distance, out RaycastHit hit,
+                    distance, Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore))
+            {
+                return true;
+            }
+
+            return hit.collider.GetComponentInParent<PlayerHealth>() ==
+                   targetHealth;
         }
 
         private void CancelDash()

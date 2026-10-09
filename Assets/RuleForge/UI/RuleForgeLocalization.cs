@@ -136,6 +136,13 @@ namespace RuleForge.UI
                 case "SpawnGrunt": return "生成普通敌人";
                 case "SpawnTank": return "生成重型敌人";
                 case "GiveAmmo": return "补充弹药";
+                case "AddTime": return "延长剩余时间";
+                case "PlayerMaxHealthBonus": return "最大生命提高";
+                case "PlayerMaxHealthPenalty": return "最大生命降低";
+                case "PlayerJumpHeight": return "跳跃高度";
+                case "WeaponRange": return "武器射程";
+                case "WeaponMagazineCapacity": return "弹匣容量";
+                case "EnemyTurnSpeed": return "敌人转向速度";
                 case "PlayerMoveSpeed": return "玩家移动速度";
                 case "EnemyDamage": return "敌人攻击伤害";
                 case "EnemyHealth": return "敌人生命上限";

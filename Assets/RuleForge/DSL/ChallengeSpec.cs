@@ -7,7 +7,10 @@ namespace RuleForge.DSL
     {
         Survive,
         KillCount,
-        Score
+        Score,
+        TimeBankTarget,
+        TimeBankSurvive,
+        TimeBankEndless
     }
 
     [Serializable]
@@ -17,6 +20,8 @@ namespace RuleForge.DSL
         [SerializeField] private string displayName;
         [SerializeField] private string goal;
         [SerializeField] private float goalTarget = 10f;
+        [SerializeField] private float timeLimit;
+        [SerializeField] private float timeDamageScale;
         [SerializeField] private string weapon;
         [SerializeField] private GameplayRule[] rules = Array.Empty<GameplayRule>();
 
@@ -24,6 +29,8 @@ namespace RuleForge.DSL
         public string DisplayName => displayName ?? string.Empty;
         public string Goal => goal ?? string.Empty;
         public float GoalTarget => goalTarget;
+        public float TimeLimit => timeLimit;
+        public float TimeDamageScale => timeDamageScale;
         public string Weapon => weapon ?? string.Empty;
         public GameplayRule[] Rules => rules ?? Array.Empty<GameplayRule>();
 
@@ -49,7 +56,9 @@ namespace RuleForge.DSL
             string challengeGoal,
             float challengeGoalTarget,
             string challengeWeapon,
-            GameplayRule[] challengeRules)
+            GameplayRule[] challengeRules,
+            float challengeTimeLimit = 0f,
+            float challengeTimeDamageScale = 0f)
         {
             return new ChallengeSpec
             {
@@ -57,6 +66,8 @@ namespace RuleForge.DSL
                 displayName = challengeName ?? string.Empty,
                 goal = challengeGoal ?? string.Empty,
                 goalTarget = challengeGoalTarget,
+                timeLimit = challengeTimeLimit,
+                timeDamageScale = challengeTimeDamageScale,
                 weapon = challengeWeapon ?? string.Empty,
                 rules = challengeRules ?? Array.Empty<GameplayRule>()
             };

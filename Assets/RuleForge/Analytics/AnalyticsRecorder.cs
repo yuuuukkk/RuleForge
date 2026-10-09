@@ -110,7 +110,7 @@ namespace RuleForge.Analytics
         {
             try
             {
-                latestSummary = AnalyticsStorage.RebuildSummary();
+                latestSummary = AnalyticsStorage.GetSummary();
             }
             catch (Exception exception)
             {
@@ -168,7 +168,7 @@ namespace RuleForge.Analytics
             }
 
             latestAIRecord = record;
-            RefreshSummary();
+            latestSummary = AnalyticsStorage.GetSummary();
         }
 
         private void HandleChallengeRestarted(ChallengeSpec challenge)
@@ -284,7 +284,7 @@ namespace RuleForge.Analytics
             }
 
             latestGameplayRecord = record;
-            RefreshSummary();
+            latestSummary = AnalyticsStorage.GetSummary();
         }
 
         private void ResolveReferences()

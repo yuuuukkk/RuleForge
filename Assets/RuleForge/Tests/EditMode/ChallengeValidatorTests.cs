@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text;
 using NUnit.Framework;
+using RuleForge.AI;
 using RuleForge.Config;
 using RuleForge.DSL;
 using RuleForge.Rules;
@@ -198,6 +199,202 @@ namespace RuleForge.Tests
 
             Assert.That(result.IsValid, Is.True, result.BuildSummary());
             Assert.That(result.Warnings.Count, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void TimedKillGoal_AcceptsKillToAddTime()
+        {
+            RegisterAddTime();
+            ChallengeSpec challenge = BuildTimedKillChallenge(10f);
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.IsValid, Is.True, result.BuildSummary());
+        }
+
+        [Test]
+        public void SurviveSixtySeconds_WithTwoTenStackKillEffects_IsValid()
+        {
+            balanceConfig.EnsureEffectValueLimit(
+                "EnemyMoveSpeed", 0.05f, 1.5f, 1f);
+            effectCatalog.EnsureDefinition(
+                "EnemyMoveSpeed", "Enemy Move Speed", EffectPolarity.Penalty);
+            effectCatalog.ConfigureCreatorTemplate(
+                "EnemyMoveSpeed", true, "StatModifier", "Enemy",
+                "EnemyMoveSpeed", "AddPercent", 0.08f,
+                string.Empty, "Stack", 10);
+            ChallengeSpec challenge = ChallengeSpec.Create(
+                "survive_growth", "Survive Growth", "Survive", 60f,
+                "Assault Rifle", new[]
+                {
+                    GameplayRule.Create("damage_growth", "EnemyKilled",
+                        new RuleCondition[0], new[]
+                        {
+                            RuleEffect.Create("PlayerDamage", "StatModifier",
+                                "Weapon", "WeaponDamage", "AddPercent",
+                                0.05f, string.Empty, "Stack", 10, 0f)
+                        }),
+                    GameplayRule.Create("enemy_growth", "EnemyKilled",
+                        new RuleCondition[0], new[]
+                        {
+                            RuleEffect.Create("EnemyMoveSpeed", "StatModifier",
+                                "Enemy", "EnemyMoveSpeed", "AddPercent",
+                                0.08f, string.Empty, "Stack", 10, 0f)
+                        })
+                });
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.IsValid, Is.True, result.BuildSummary());
+        }
+
+        [Test]
+        public void EnemyKilled_EventValueMilestone_IsRejected()
+        {
+            ChallengeSpec challenge = ChallengeSpec.Create(
+                "invalid_milestone", "Invalid Milestone", "Survive", 60f,
+                "Assault Rifle", new[]
+                {
+                    GameplayRule.Create("third_kill", "EnemyKilled",
+                        new[]
+                        {
+                            RuleCondition.Create("EventValue", "Equals", 3f,
+                                string.Empty)
+                        },
+                        new[]
+                        {
+                            RuleEffect.Create("PlayerDamage", "StatModifier",
+                                "Weapon", "WeaponDamage", "AddPercent",
+                                0.05f, string.Empty, "Stack", 10, 0f)
+                        })
+                });
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.Errors.Any(error =>
+                error.Contains("no documented numeric value")), Is.True);
+        }
+
+        [TestCase("TimeBankTarget", 100f)]
+        [TestCase("TimeBankSurvive", 60f)]
+        [TestCase("TimeBankEndless", 0f)]
+        public void TimeBankGoals_AllowKillToExtendTimeWithoutKillObjective(
+            string goal, float target)
+        {
+            RegisterAddTime();
+            ChallengeSpec challenge = ChallengeSpec.Create(
+                "time_trial", "Time Trial", goal, target,
+                "Assault Rifle", BuildTimedKillChallenge(10f).Rules,
+                10f, 0.1f);
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.IsValid, Is.True, result.BuildSummary());
+        }
+
+        [Test]
+        public void TimeBank_RejectsImmediateVictoryAndMissingDamageConversion()
+        {
+            RegisterAddTime();
+            GameplayRule[] rules = BuildTimedKillChallenge(10f).Rules;
+            ChallengeSpec immediate = ChallengeSpec.Create(
+                "time_trial", "Time Trial", "TimeBankTarget", 10f,
+                "Assault Rifle", rules, 10f, 0.1f);
+            ChallengeSpec noConversion = ChallengeSpec.Create(
+                "time_trial", "Time Trial", "TimeBankEndless", 0f,
+                "Assault Rifle", rules, 10f, 0f);
+
+            Assert.That(validator.Validate(immediate).Errors.Any(
+                error => error.Contains("victory is immediate")), Is.True);
+            Assert.That(validator.Validate(noConversion).Errors.Any(
+                error => error.Contains("timeDamageScale")), Is.True);
+        }
+
+        [Test]
+        public void AddTime_RequiresTimedGoalAndBoundedValue()
+        {
+            RegisterAddTime();
+            ChallengeSpec noTimer = BuildTimedKillChallenge(0f);
+            ChallengeSpec tooMuchTime = BuildTimedKillChallenge(10f, 100f);
+
+            Assert.That(validator.Validate(noTimer).Errors.Any(
+                error => error.Contains("requires a timed")), Is.True);
+            Assert.That(validator.Validate(tooMuchTime).Errors.Any(
+                error => error.Contains("allowed range")), Is.True);
+        }
+
+        [Test]
+        public void ModifyTimeLimitPatch_PreservesGoalAndRules()
+        {
+            RegisterAddTime();
+            ChallengeSpec current = BuildTimedKillChallenge(10f);
+            ChallengePatch patch = JsonUtility.FromJson<ChallengePatch>(
+                "{\"operations\":[{\"operation\":\"ModifyTimeLimit\"," +
+                "\"timeLimit\":15}]}");
+
+            bool applied = ChallengePatchApplier.TryApply(
+                current, patch, out ChallengeSpec candidate,
+                out string error);
+
+            Assert.That(applied, Is.True, error);
+            Assert.That(candidate.TimeLimit, Is.EqualTo(15f));
+            Assert.That(candidate.Goal, Is.EqualTo(current.Goal));
+            Assert.That(candidate.Rules[0].Id, Is.EqualTo(current.Rules[0].Id));
+            Assert.That(validator.Validate(candidate).IsValid, Is.True);
+        }
+
+        [Test]
+        public void EventValueScaling_RejectsTriggerWithoutNumericValue()
+        {
+            RuleEffect effect = RuleEffect.Create(
+                "PlayerDamage", "StatModifier", "Weapon", "WeaponDamage",
+                "AddPercent", 0.05f, string.Empty, "None", 1, 0f,
+                RuleScaling.Create("EventValue", "Linear",
+                    0f, 1f, 0.05f, 0.1f));
+            ChallengeSpec challenge = ChallengeSpec.Create(
+                "invalid_scaling", "Invalid Scaling", "KillCount", 10f,
+                "Assault Rifle",
+                new[]
+                {
+                    GameplayRule.Create("non_numeric", "GameStarted",
+                        new RuleCondition[0], new[] { effect })
+                });
+
+            ValidationResult result = validator.Validate(challenge);
+
+            Assert.That(result.Errors.Any(
+                error => error.Contains("requires a numeric trigger")),
+                Is.True);
+        }
+
+        private void RegisterAddTime()
+        {
+            balanceConfig.EnsureEffectValueLimit("AddTime", 0.1f, 10f, 0f);
+            effectCatalog.EnsureDefinition(
+                "AddTime", "Extra Time", EffectPolarity.Reward);
+            effectCatalog.ConfigureCreatorTemplate(
+                "AddTime", true, "AddTime", "Time", string.Empty,
+                string.Empty, 1f, string.Empty, "None", 1);
+        }
+
+        private static ChallengeSpec BuildTimedKillChallenge(
+            float timeLimit, float bonusSeconds = 1f)
+        {
+            return ChallengeSpec.Create(
+                "timed_kills", "Timed Kills", "KillCount", 10f,
+                "Assault Rifle",
+                new[]
+                {
+                    GameplayRule.Create("extra_second", "EnemyKilled",
+                        new RuleCondition[0],
+                        new[]
+                        {
+                            RuleEffect.Create("AddTime", "AddTime", "Time",
+                                string.Empty, string.Empty, bonusSeconds,
+                                string.Empty, "None", 1, 0f)
+                        })
+                },
+                timeLimit);
         }
 
         private static string BuildChallengeJson(string rules)

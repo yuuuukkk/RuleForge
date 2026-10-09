@@ -18,8 +18,6 @@ namespace RuleForge.AI
         [SerializeField, Min(0)] private int activeProviderIndex;
 
         private bool isBusy;
-        private string previousGenerationPrompt = string.Empty;
-        private string previousGenerationStructure = string.Empty;
 
         public event Action<AIGenerationTelemetry> RequestCompleted;
 
@@ -50,6 +48,28 @@ namespace RuleForge.AI
             {
                 IAIGameplayService provider = GetActiveProvider();
                 return provider != null && provider.IsConfigured;
+            }
+        }
+
+        public AIProviderConnectionState ActiveProviderConnectionState
+        {
+            get
+            {
+                IAIGameplayService provider = GetActiveProvider();
+                return provider != null
+                    ? provider.ConnectionState
+                    : AIProviderConnectionState.NotConfigured;
+            }
+        }
+
+        public string ActiveProviderConnectionMessage
+        {
+            get
+            {
+                IAIGameplayService provider = GetActiveProvider();
+                return provider != null
+                    ? provider.ConnectionMessage
+                    : "No AI provider is selected.";
             }
         }
 
@@ -99,6 +119,41 @@ namespace RuleForge.AI
             }
         }
 
+        public bool VerifyActiveProvider(Action<bool, string> onComplete)
+        {
+            if (isBusy)
+            {
+                onComplete?.Invoke(false, "AI is already processing a request.");
+                return false;
+            }
+
+            IAIGameplayService provider = GetActiveProvider();
+            if (provider == null)
+            {
+                onComplete?.Invoke(false, "No AI provider is selected.");
+                return false;
+            }
+
+            isBusy = true;
+            StartCoroutine(VerifyActiveProviderRoutine(provider, onComplete));
+            return true;
+        }
+
+        private IEnumerator VerifyActiveProviderRoutine(
+            IAIGameplayService provider,
+            Action<bool, string> onComplete)
+        {
+            bool success = false;
+            string message = "Provider verification did not complete.";
+            yield return provider.VerifyConnection((verified, resultMessage) =>
+            {
+                success = verified;
+                message = resultMessage;
+            });
+            isBusy = false;
+            onComplete?.Invoke(success, message);
+        }
+
         private void SelectPreferredProvider()
         {
             if (providerComponents == null || providerComponents.Length == 0)
@@ -112,6 +167,18 @@ namespace RuleForge.AI
                 if (providerComponents[index] is IAIGameplayService provider &&
                     provider.ProviderKind == AIProviderKind.Real &&
                     provider.IsConfigured)
+                {
+                    activeProviderIndex = index;
+                    return;
+                }
+            }
+
+            // Keep the real provider visible when it needs configuration;
+            // an available offline sample must not mask its status.
+            for (int index = 0; index < providerComponents.Length; index++)
+            {
+                if (providerComponents[index] is IAIGameplayService provider &&
+                    provider.ProviderKind == AIProviderKind.Real)
                 {
                     activeProviderIndex = index;
                     return;
@@ -162,7 +229,9 @@ namespace RuleForge.AI
             GameplayProposal confirmedProposal,
             Action<AIChallengePreview> onComplete)
         {
-            if (confirmedProposal == null || !confirmedProposal.CanGenerate)
+            if (confirmedProposal == null ||
+                !confirmedProposal.CanGenerate ||
+                !confirmedProposal.WithinVocabulary)
             {
                 onComplete?.Invoke(AIChallengePreview.Failed(
                     "Confirm a complete Gameplay Proposal before generation."));
@@ -293,7 +362,10 @@ namespace RuleForge.AI
             AIChallengePreview preview = CreatePreview(
                 result.Value,
                 "AI CREATED");
-            if (preview.Validation != null && !preview.Validation.IsValid)
+            bool matchesConfirmedIntent = ChallengeIntentContract.TryValidate(
+                confirmedProposal, result.Value, out _);
+            if ((preview.Validation != null && !preview.Validation.IsValid) ||
+                !matchesConfirmedIntent)
             {
                 yield return RepairRoutine(
                     provider,
@@ -304,14 +376,17 @@ namespace RuleForge.AI
                     preview,
                     repaired => preview = repaired);
             }
+            if (preview.Success && preview.Challenge != null &&
+                !ChallengeIntentContract.TryValidate(
+                    confirmedProposal,
+                    preview.Challenge,
+                    out string generationIntentError))
+            {
+                preview = AIChallengePreview.Failed(
+                    "AI intent mismatch: " + generationIntentError);
+            }
             timer.Stop();
             isBusy = false;
-            if (preview.Success && preview.Challenge != null)
-            {
-                previousGenerationPrompt = prompt;
-                previousGenerationStructure =
-                    GameplayVocabulary.BuildStructureSummary(preview.Challenge);
-            }
             PublishTelemetry(
                 "Generate",
                 provider,
@@ -510,37 +585,87 @@ namespace RuleForge.AI
         {
             string validationContext = BuildValidationContext(
                 invalidPreview.Validation);
-            AIChallengeRepairRequest request = new AIChallengeRepairRequest(
-                prompt,
-                confirmedProposal,
-                invalidChallenge,
-                previousChallenge,
-                validationContext,
-                BuildBalanceContext(invalidPreview.Balance),
-                BuildVocabulary(),
-                GameplayVocabulary.BuildRepairSchema(EffectCatalog));
-            AIGameplayResult<GameplayRepairResult> repair = null;
-            yield return provider.RepairChallenge(request, value => repair = value);
-            if (repair == null || !repair.Success ||
-                repair.Value?.RepairedChallenge == null)
+            if (confirmedProposal != null &&
+                !ChallengeIntentContract.TryValidate(
+                    confirmedProposal, invalidChallenge,
+                    out string initialIntentError))
             {
-                onComplete?.Invoke(AIChallengePreview.Failed(
-                    "Validator rejected the AI result:\n" +
-                    validationContext +
-                    "\nAI repair failed: " +
-                    (repair != null ? repair.Error : "no repair result")));
-                yield break;
+                validationContext += "\nCONFIRMED PROPOSAL MISMATCH: " +
+                                     initialIntentError;
+            }
+            ChallengeSpec repairInput = invalidChallenge;
+            AIGameplayResult<GameplayRepairResult> repair = null;
+            AIChallengePreview repairedPreview = null;
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                AIChallengeRepairRequest request = new AIChallengeRepairRequest(
+                    prompt,
+                    confirmedProposal,
+                    repairInput,
+                    previousChallenge,
+                    validationContext,
+                    BuildBalanceContext(invalidPreview.Balance),
+                    BuildVocabulary(),
+                    GameplayVocabulary.BuildRepairSchema(EffectCatalog));
+                repair = null;
+                yield return provider.RepairChallenge(
+                    request, value => repair = value);
+                if (repair == null || !repair.Success ||
+                    repair.Value?.RepairedChallenge == null)
+                {
+                    onComplete?.Invoke(AIChallengePreview.Failed(
+                        "AI repair failed after validation or intent rejection: " +
+                        (repair != null ? repair.Error : "no repair result") +
+                        "\n" + validationContext));
+                    yield break;
+                }
+
+                repairedPreview = CreatePreview(
+                    repair.Value.RepairedChallenge, "AI REPAIRED");
+                bool preservesIntent = confirmedProposal == null ||
+                    ChallengeIntentContract.TryValidate(
+                        confirmedProposal,
+                        repairedPreview.Challenge,
+                        out _);
+                if (repairedPreview.Validation != null &&
+                    repairedPreview.Validation.IsValid && preservesIntent)
+                {
+                    break;
+                }
+
+                repairInput = repair.Value.RepairedChallenge;
+                validationContext = BuildValidationContext(
+                    repairedPreview.Validation);
+                if (!preservesIntent)
+                {
+                    ChallengeIntentContract.TryValidate(
+                        confirmedProposal,
+                        repairedPreview.Challenge,
+                        out string intentError);
+                    validationContext += "\nCONFIRMED PROPOSAL MISMATCH: " +
+                                         intentError;
+                }
             }
 
-            AIChallengePreview repairedPreview = CreatePreview(
-                repair.Value.RepairedChallenge,
-                "AI REPAIRED");
-            if (repairedPreview.Validation == null ||
+            if (repairedPreview == null ||
+                repairedPreview.Validation == null ||
                 !repairedPreview.Validation.IsValid)
             {
                 onComplete?.Invoke(AIChallengePreview.Failed(
-                    "AI repair was still rejected by Validator. " +
-                    BuildValidationContext(repairedPreview.Validation)));
+                    "AI repair was still rejected by Validator after two attempts. " +
+                    validationContext));
+                yield break;
+            }
+
+            if (confirmedProposal != null &&
+                !ChallengeIntentContract.TryValidate(
+                    confirmedProposal,
+                    repairedPreview.Challenge,
+                    out string repairIntentError))
+            {
+                onComplete?.Invoke(AIChallengePreview.Failed(
+                    "AI intent mismatch after repair: " +
+                    repairIntentError));
                 yield break;
             }
 
@@ -689,11 +814,6 @@ namespace RuleForge.AI
                 source);
         }
 
-        private string BuildPreferences()
-        {
-            return BuildPreferences(ruleEngine.ActiveChallenge);
-        }
-
         private string BuildPreferences(ChallengeSpec challenge)
         {
             return
@@ -706,20 +826,13 @@ namespace RuleForge.AI
 
         private string BuildGenerationPreferences()
         {
-            string preferences = BuildPreferences();
-            if (string.IsNullOrWhiteSpace(previousGenerationPrompt) ||
-                string.IsNullOrWhiteSpace(previousGenerationStructure))
-            {
-                return preferences;
-            }
-
-            return preferences +
-                   " Previous user prompt: " + previousGenerationPrompt +
-                   ". Previous structural result: " +
-                   previousGenerationStructure +
-                   ". Compare the new request with this context. If its gameplay " +
-                   "intent differs, choose a materially different valid structure; " +
-                   "do not vary names alone.";
+            // A new challenge must not inherit the active challenge's goal or a
+            // previous generation. Those are context for Modify, not Generate.
+            return
+                $"Reward strength multiplier: {ruleEngine.RewardMultiplier:0.##}. " +
+                $"Penalty strength multiplier: {ruleEngine.PenaltyMultiplier:0.##}. " +
+                "Use the player's current request and confirmed proposal as the " +
+                "only source of goal, target, rules and stacking limits.";
         }
 
         private string BuildVocabulary()

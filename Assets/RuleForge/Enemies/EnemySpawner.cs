@@ -29,12 +29,16 @@ namespace RuleForge.Enemies
         private float nextPacingRefreshAt;
         private float preparationEndsAt;
         private bool waitingForPreparation;
+        private int pendingRespawnCount;
+        private int respawnGeneration;
 
         public event Action<EnemyHealth> EnemySpawned;
 
         public int AliveEnemyCount => aliveEnemies.Count;
         public int PressureTier => pressureTier;
         public bool IsPreparing => waitingForPreparation;
+        public int PendingRespawnCount => pendingRespawnCount;
+        public int DesiredAliveEnemyCount => GetDesiredAliveEnemyCount();
         public float ChallengeProgress => goalController != null
             ? goalController.ProgressNormalized
             : 0f;
@@ -56,8 +60,8 @@ namespace RuleForge.Enemies
             ResolveGoalController();
             if (waitingForPreparation)
             {
-                if (goalController == null ||
-                    goalController.State != ChallengeGoalState.Running ||
+                if ((goalController != null &&
+                     goalController.State != ChallengeGoalState.Running) ||
                     Time.time < preparationEndsAt)
                 {
                     return;
@@ -79,6 +83,7 @@ namespace RuleForge.Enemies
 
         private void OnDestroy()
         {
+            StopAllCoroutines();
             foreach (EnemyHealth enemy in aliveEnemies)
             {
                 if (enemy != null)
@@ -102,6 +107,14 @@ namespace RuleForge.Enemies
             enemyPrefab = prefab;
             spawnPoints = points;
             enemyTypes = configs ?? Array.Empty<EnemyConfig>();
+        }
+
+        public void ConfigurePacing(
+            float preparationSeconds,
+            float refreshSeconds)
+        {
+            preparationDuration = Mathf.Max(0f, preparationSeconds);
+            pacingRefreshInterval = Mathf.Max(0.01f, refreshSeconds);
         }
 
         public EnemyHealth SpawnEnemy()
@@ -166,7 +179,9 @@ namespace RuleForge.Enemies
 
         public void ResetForChallenge()
         {
+            respawnGeneration++;
             StopAllCoroutines();
+            pendingRespawnCount = 0;
             EnemyHealth[] enemies = new EnemyHealth[aliveEnemies.Count];
             aliveEnemies.CopyTo(enemies);
             aliveEnemies.Clear();
@@ -207,7 +222,8 @@ namespace RuleForge.Enemies
                 return;
             }
 
-            while (aliveEnemies.Count < desiredAliveEnemies)
+            while (aliveEnemies.Count + pendingRespawnCount <
+                   desiredAliveEnemies)
             {
                 if (SpawnEnemy() == null)
                 {
@@ -224,14 +240,33 @@ namespace RuleForge.Enemies
                 : 0f;
             enemy.Died -= HandleEnemyDied;
             aliveEnemies.Remove(enemy);
-            StartCoroutine(RespawnAfterDelay(respawnDelay));
+            pendingRespawnCount++;
+            int scheduledGeneration = respawnGeneration;
+            StartCoroutine(RespawnAfterDelay(
+                respawnDelay,
+                scheduledGeneration));
         }
 
-        private IEnumerator RespawnAfterDelay(float respawnDelay)
+        private IEnumerator RespawnAfterDelay(
+            float respawnDelay,
+            int scheduledGeneration)
         {
             if (respawnDelay > 0f)
             {
                 yield return new WaitForSeconds(respawnDelay);
+            }
+
+            if (scheduledGeneration != respawnGeneration)
+            {
+                yield break;
+            }
+
+            pendingRespawnCount = Mathf.Max(0, pendingRespawnCount - 1);
+            if (waitingForPreparation ||
+                (goalController != null &&
+                 goalController.State != ChallengeGoalState.Running))
+            {
+                yield break;
             }
 
             FillMissingEnemies();

@@ -10,6 +10,10 @@ namespace RuleForge.AI
         AIProviderKind ProviderKind { get; }
         bool IsConfigured { get; }
         bool IsBenchmarkEligible { get; }
+        AIProviderConnectionState ConnectionState { get; }
+        string ConnectionMessage { get; }
+
+        IEnumerator VerifyConnection(Action<bool, string> onComplete);
 
         IEnumerator AnalyzeGameplay(
             AIProposalAnalysisRequest request,
@@ -45,6 +49,15 @@ namespace RuleForge.AI
         Unknown,
         Mock,
         Real
+    }
+
+    public enum AIProviderConnectionState
+    {
+        NotConfigured,
+        Unverified,
+        Verifying,
+        Verified,
+        Failed
     }
 
     [Serializable]

@@ -16,6 +16,12 @@ namespace RuleForge.Analytics
         private const string GameplayCsvName = "gameplay_sessions.csv";
         private const string SummaryName = "analytics_summary.json";
 
+        private static readonly Dictionary<string, bool> LatestAttemptSuccess =
+            new Dictionary<string, bool>(StringComparer.Ordinal);
+        private static AnalyticsSummary cachedSummary;
+        private static bool summaryLoaded;
+        private static bool attemptIndexLoaded;
+
         public static string OutputDirectory =>
             Path.Combine(Application.persistentDataPath, FolderName);
 
@@ -32,6 +38,7 @@ namespace RuleForge.Analytics
             try
             {
                 EnsureDirectory();
+                AnalyticsSummary summary = GetSummary();
                 AppendJsonLine(Path.Combine(OutputDirectory, AILogName), record);
                 AppendCsv(
                     Path.Combine(OutputDirectory, AICsvName),
@@ -54,12 +61,16 @@ namespace RuleForge.Analytics
                         Bool(record.isRetry),
                         Bool(record.benchmarkEligible)
                     }));
-                RebuildSummary();
+                Accumulate(summary, record);
+                UpdateAttemptIndex(record);
+                WriteSummary(summary);
                 error = string.Empty;
                 return true;
             }
             catch (Exception exception)
             {
+                summaryLoaded = false;
+                attemptIndexLoaded = false;
                 error = exception.Message;
                 return false;
             }
@@ -78,6 +89,7 @@ namespace RuleForge.Analytics
             try
             {
                 EnsureDirectory();
+                AnalyticsSummary summary = GetSummary();
                 AppendJsonLine(
                     Path.Combine(OutputDirectory, GameplayLogName),
                     record);
@@ -97,12 +109,14 @@ namespace RuleForge.Analytics
                         record.headshots.ToString(CultureInfo.InvariantCulture),
                         record.rulesTriggered.ToString(CultureInfo.InvariantCulture)
                     }));
-                RebuildSummary();
+                Accumulate(summary, record);
+                WriteSummary(summary);
                 error = string.Empty;
                 return true;
             }
             catch (Exception exception)
             {
+                summaryLoaded = false;
                 error = exception.Message;
                 return false;
             }
@@ -113,27 +127,53 @@ namespace RuleForge.Analytics
             string provider,
             string prompt)
         {
-            bool found = false;
-            bool successful = false;
-            List<AIGenerationRecord> records = LoadJsonLines<AIGenerationRecord>(
-                Path.Combine(OutputDirectory, AILogName));
-            for (int index = 0; index < records.Count; index++)
+            EnsureAttemptIndexLoaded();
+            return LatestAttemptSuccess.TryGetValue(
+                       BuildAttemptKey(requestType, provider, prompt),
+                       out bool successful) &&
+                   !successful;
+        }
+
+        public static AnalyticsSummary GetSummary()
+        {
+            if (summaryLoaded && cachedSummary != null)
             {
-                AIGenerationRecord record = records[index];
-                if (record != null &&
-                    Same(record.requestType, requestType) &&
-                    Same(record.provider, provider) &&
-                    string.Equals(
-                        NormalizePrompt(record.prompt),
-                        NormalizePrompt(prompt),
-                        StringComparison.Ordinal))
+                return cachedSummary;
+            }
+
+            EnsureDirectory();
+            string path = Path.Combine(OutputDirectory, SummaryName);
+            if (File.Exists(path) && !LogsAreNewerThan(path))
+            {
+                try
                 {
-                    found = true;
-                    successful = record.Successful;
+                    cachedSummary = JsonUtility.FromJson<AnalyticsSummary>(
+                        File.ReadAllText(path, Encoding.UTF8));
+                }
+                catch (Exception)
+                {
+                    cachedSummary = null;
                 }
             }
 
-            return found && !successful;
+            if (cachedSummary == null)
+            {
+                return RebuildSummary();
+            }
+
+            summaryLoaded = true;
+            return cachedSummary;
+        }
+
+        private static bool LogsAreNewerThan(string summaryPath)
+        {
+            DateTime summaryWriteTime = File.GetLastWriteTimeUtc(summaryPath);
+            string aiPath = Path.Combine(OutputDirectory, AILogName);
+            string gameplayPath = Path.Combine(OutputDirectory, GameplayLogName);
+            return (File.Exists(aiPath) &&
+                    File.GetLastWriteTimeUtc(aiPath) > summaryWriteTime) ||
+                   (File.Exists(gameplayPath) &&
+                    File.GetLastWriteTimeUtc(gameplayPath) > summaryWriteTime);
         }
 
         public static AnalyticsSummary RebuildSummary()
@@ -145,78 +185,103 @@ namespace RuleForge.Analytics
                 LoadJsonLines<GameplaySessionRecord>(
                     Path.Combine(OutputDirectory, GameplayLogName));
             AnalyticsSummary summary = CalculateSummary(aiRecords, gameplayRecords);
-            File.WriteAllText(
-                Path.Combine(OutputDirectory, SummaryName),
-                JsonUtility.ToJson(summary, true),
-                new UTF8Encoding(false));
+            cachedSummary = summary;
+            summaryLoaded = true;
+            RebuildAttemptIndex(aiRecords);
+            WriteSummary(summary);
             return summary;
         }
 
-        public static AnalyticsSummary CalculateSummary(
-            IReadOnlyList<AIGenerationRecord> aiRecords,
-            IReadOnlyList<GameplaySessionRecord> gameplayRecords)
+        private static void Accumulate(
+            AnalyticsSummary summary,
+            AIGenerationRecord record)
         {
-            AnalyticsSummary summary = new AnalyticsSummary
+            if (summary == null || record == null)
             {
-                generatedAtUtc = DateTime.UtcNow.ToString(
-                    "o",
-                    CultureInfo.InvariantCulture),
-                totalAIRequests = aiRecords != null ? aiRecords.Count : 0,
-                gameplaySessions = gameplayRecords != null
-                    ? gameplayRecords.Count
-                    : 0
-            };
+                return;
+            }
 
-            double latencyTotal = 0d;
-            if (aiRecords != null)
+            summary.generatedAtUtc = UtcNow();
+            summary.totalAIRequests++;
+            if (!record.benchmarkEligible)
             {
-                for (int index = 0; index < aiRecords.Count; index++)
+                return;
+            }
+
+            summary.benchmarkAIRequests++;
+            if (!string.Equals(
+                    record.requestType,
+                    "Generate",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            int previousGenerationCount = summary.generationBenchmarkRequests;
+            summary.generationBenchmarkRequests++;
+            summary.averageGenerationLatencyMs =
+                (summary.averageGenerationLatencyMs * previousGenerationCount +
+                 Math.Max(0f, record.generationTimeMs)) /
+                summary.generationBenchmarkRequests;
+
+            if (record.isRetry)
+            {
+                summary.retryAttempts++;
+                if (record.Successful)
                 {
-                    AIGenerationRecord record = aiRecords[index];
-                    if (record == null || !record.benchmarkEligible)
-                    {
-                        continue;
-                    }
-
-                    summary.benchmarkAIRequests++;
-                    if (!string.Equals(
-                            record.requestType,
-                            "Generate",
-                            StringComparison.OrdinalIgnoreCase))
-                    {
-                        continue;
-                    }
-
-                    summary.generationBenchmarkRequests++;
-                    latencyTotal += Math.Max(0f, record.generationTimeMs);
-                    if (record.isRetry)
-                    {
-                        summary.retryAttempts++;
-                        if (record.Successful)
-                        {
-                            summary.retrySuccesses++;
-                        }
-                    }
-                    else
-                    {
-                        summary.firstPassAttempts++;
-                        if (record.Successful)
-                        {
-                            summary.firstPassSuccesses++;
-                        }
-                    }
-
-                    if (record.parseSuccess)
-                    {
-                        summary.parsedBenchmarkOutputs++;
-                        if (!record.validationPassed)
-                        {
-                            summary.validationRejections++;
-                        }
-                    }
+                    summary.retrySuccesses++;
+                }
+            }
+            else
+            {
+                summary.firstPassAttempts++;
+                if (record.Successful)
+                {
+                    summary.firstPassSuccesses++;
                 }
             }
 
+            if (record.parseSuccess)
+            {
+                summary.parsedBenchmarkOutputs++;
+                if (!record.validationPassed)
+                {
+                    summary.validationRejections++;
+                }
+            }
+
+            RefreshRates(summary);
+        }
+
+        private static void Accumulate(
+            AnalyticsSummary summary,
+            GameplaySessionRecord record)
+        {
+            if (summary == null || record == null)
+            {
+                return;
+            }
+
+            summary.generatedAtUtc = UtcNow();
+            int previousSessionCount = summary.gameplaySessions;
+            summary.gameplaySessions++;
+            summary.averagePlayDurationSeconds =
+                (summary.averagePlayDurationSeconds * previousSessionCount +
+                 Math.Max(0f, record.playDurationSeconds)) /
+                summary.gameplaySessions;
+            if (record.victory)
+            {
+                summary.victories++;
+            }
+
+            summary.totalKills += Math.Max(0, record.kills);
+            summary.totalHeadshots += Math.Max(0, record.headshots);
+            summary.totalRulesTriggered += Math.Max(0, record.rulesTriggered);
+            RefreshRates(summary);
+        }
+
+        private static void RefreshRates(AnalyticsSummary summary)
+        {
             summary.firstPassGenerationSuccessRate = Rate(
                 summary.firstPassSuccesses,
                 summary.firstPassAttempts);
@@ -226,43 +291,102 @@ namespace RuleForge.Analytics
             summary.retrySuccessRate = Rate(
                 summary.retrySuccesses,
                 summary.retryAttempts);
-            summary.averageGenerationLatencyMs =
-                summary.generationBenchmarkRequests > 0
-                    ? (float)(latencyTotal / summary.generationBenchmarkRequests)
-                    : 0f;
+            summary.victoryRate = Rate(
+                summary.victories,
+                summary.gameplaySessions);
+        }
 
-            double durationTotal = 0d;
+        private static void WriteSummary(AnalyticsSummary summary)
+        {
+            AnalyticsSummary value = summary ?? new AnalyticsSummary();
+            File.WriteAllText(
+                Path.Combine(OutputDirectory, SummaryName),
+                JsonUtility.ToJson(value, true),
+                new UTF8Encoding(false));
+            cachedSummary = value;
+            summaryLoaded = true;
+        }
+
+        private static void EnsureAttemptIndexLoaded()
+        {
+            if (attemptIndexLoaded)
+            {
+                return;
+            }
+
+            List<AIGenerationRecord> records = LoadJsonLines<AIGenerationRecord>(
+                Path.Combine(OutputDirectory, AILogName));
+            RebuildAttemptIndex(records);
+        }
+
+        private static void RebuildAttemptIndex(
+            IReadOnlyList<AIGenerationRecord> records)
+        {
+            LatestAttemptSuccess.Clear();
+            if (records != null)
+            {
+                for (int index = 0; index < records.Count; index++)
+                {
+                    UpdateAttemptIndex(records[index]);
+                }
+            }
+
+            attemptIndexLoaded = true;
+        }
+
+        private static void UpdateAttemptIndex(AIGenerationRecord record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            LatestAttemptSuccess[BuildAttemptKey(
+                record.requestType,
+                record.provider,
+                record.prompt)] = record.Successful;
+        }
+
+        private static string BuildAttemptKey(
+            string requestType,
+            string provider,
+            string prompt)
+        {
+            return (requestType ?? string.Empty).ToUpperInvariant() + "\u001f" +
+                   (provider ?? string.Empty).ToUpperInvariant() + "\u001f" +
+                   NormalizePrompt(prompt);
+        }
+
+        private static string UtcNow()
+        {
+            return DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        public static AnalyticsSummary CalculateSummary(
+            IReadOnlyList<AIGenerationRecord> aiRecords,
+            IReadOnlyList<GameplaySessionRecord> gameplayRecords)
+        {
+            AnalyticsSummary summary = new AnalyticsSummary
+            {
+                generatedAtUtc = UtcNow()
+            };
+
+            if (aiRecords != null)
+            {
+                for (int index = 0; index < aiRecords.Count; index++)
+                {
+                    Accumulate(summary, aiRecords[index]);
+                }
+            }
+
             if (gameplayRecords != null)
             {
                 for (int index = 0; index < gameplayRecords.Count; index++)
                 {
-                    GameplaySessionRecord record = gameplayRecords[index];
-                    if (record == null)
-                    {
-                        continue;
-                    }
-
-                    durationTotal += Math.Max(0f, record.playDurationSeconds);
-                    if (record.victory)
-                    {
-                        summary.victories++;
-                    }
-
-                    summary.totalKills += Math.Max(0, record.kills);
-                    summary.totalHeadshots += Math.Max(0, record.headshots);
-                    summary.totalRulesTriggered += Math.Max(
-                        0,
-                        record.rulesTriggered);
+                    Accumulate(summary, gameplayRecords[index]);
                 }
             }
 
-            summary.victoryRate = Rate(
-                summary.victories,
-                summary.gameplaySessions);
-            summary.averagePlayDurationSeconds =
-                summary.gameplaySessions > 0
-                    ? (float)(durationTotal / summary.gameplaySessions)
-                    : 0f;
             return summary;
         }
 
@@ -356,14 +480,6 @@ namespace RuleForge.Analytics
         private static float Rate(int numerator, int denominator)
         {
             return denominator > 0 ? (float)numerator / denominator : 0f;
-        }
-
-        private static bool Same(string left, string right)
-        {
-            return string.Equals(
-                left ?? string.Empty,
-                right ?? string.Empty,
-                StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizePrompt(string prompt)
